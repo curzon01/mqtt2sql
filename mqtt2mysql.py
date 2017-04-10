@@ -17,7 +17,7 @@ import time
 import signal
 import argparse
 
-VERSION = '1.1.0006'
+VER = '1.1.0007'
 
 args = {}
 
@@ -90,14 +90,15 @@ def exit(status=0, message="end"):
 	sys.exit(status)
 
 def signal_term_handler(signal, frame):
-	log('%s v%s end - %s' % (scriptname, VERSION, str(signal)))
+	log('%s v%s end - %s' % (scriptname, VER, str(signal)))
 	sys.exit(0)
 
 
 # set signal handler
 signal.signal(signal.SIGTERM, signal_term_handler)
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description='MQTT to MySQL transfer.',
+								 epilog="Subscribes to MQTT broker topic(s) and copy the values into a given mysql database table")
 mqtt_group = parser.add_argument_group('MQTT Options')
 mqtt_group.add_argument('--host', metavar="<mqtt_host>", help="MQTT host to connect to (defaults to localhost)", dest='mqtt_host', default="localhost")
 mqtt_group.add_argument('--port', metavar="<mqtt_port>", help="MQTT network port to connect to (defaults to 1883)", dest='mqtt_port', default=1883, type=int)
@@ -117,18 +118,18 @@ sql_group.add_argument('--sql_password', metavar="<sql_password>", help="SQL pas
 sql_group.add_argument('--sql_db', metavar="<sql_db>", help="SQL database to use (defaults to None)", dest='sql_db', default=None)
 sql_group.add_argument('--sql_table', metavar="<sql_table>", help="SQL database table to use (defaults to mqtt)", dest='sql_table', default="mqtt")
 
-logging_group = parser.add_argument_group('Logging')
+logging_group = parser.add_argument_group('Informational')
 logging_group.add_argument('-l', '--logfile', metavar="<logfile>", help="additional logfile", dest='logfile', default=None)
+logging_group.add_argument('-d', '--debug', help="debug output", dest='debug', action='count')
 logging_group.add_argument('-v', '--verbose', help="verbose output", dest='verbose', action='count')
-
-debug_group = parser.add_argument_group('Debug Options')
-debug_group.add_argument('-d', '--debug', help="debug output", dest='debug', action='count')
+logging_group.add_argument('-V', '--version', action='version', version='%(prog)s v'+VER)
 
 args = parser.parse_args()
 
 scriptname = os.path.basename(sys.argv[0])
 
-log('%s v%s start' % (scriptname, VERSION))
+
+log('%s v%s start' % (scriptname, VER))
 
 mqttc = mqtt.Client(scriptname)
 mqttc.on_connect = on_connect
@@ -157,7 +158,7 @@ try:
 	mqttc.connect(args.mqtt_host, args.mqtt_port, 60)
 except Exception, e:
 	message = "Connection to %s:%d failed: %s" % (args.mqtt_host, args.mqtt_port, str(e))
-	exitus(3, message)
+	exit(3, message)
 
 rc = 0
 while rc == 0:

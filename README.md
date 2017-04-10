@@ -41,7 +41,7 @@ Create mqtt2mysql.service
 ```
 sudo nano /etc/systemd/system/mqtt2mysql.service
 ```
-Insert the following - replace example usernames and passwords with yours
+Insert the following lines - note: replace example usernames and passwords with yours
 ```
 Description=MQTT2MySQL
 After=local-fs.target network.target mysql.service
@@ -55,7 +55,13 @@ ExecStart=/usr/local/bin/mqtt2mysql.py --host phmqtt.project-home.local --userna
 [Install]
 WantedBy=multi-user.target
 ```
-Finally reload systemd manager
+Reload systemd manager, restart daemon and check succes
 ```
 sudo systemctl daemon-reload
+sudo systemctl restart mqtt2mysql
+sudo systemctl status mqtt2mysql
+```
+Finally be sure the service is enabled:
+```
+sudo systemctl enable mqtt2mysql
 ```
