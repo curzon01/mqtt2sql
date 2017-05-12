@@ -15,9 +15,10 @@ import MySQLdb
 import os, sys
 import time
 import signal
+import ssl
 import argparse
 
-VER = '1.1.0007'
+VER = '1.1.0008'
 
 args = {}
 
