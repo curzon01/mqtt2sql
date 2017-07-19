@@ -8,6 +8,12 @@ This python script subscribes to MQTT broker topic and inserts the topic into a 
 sudo apt-get install python-pip python-mysqldb
 sudo pip install paho-mqtt argparse
 ```
+* Check that pip installed pao-mqtt greater or equal Version: 1.2.3, e.g.
+```
+$ sudo pip show paho-mqtt
+Name: paho-mqtt
+Version: 1.3.0
+```
 * Create database table using SQL command
 ```
 CREATE TABLE `mqtt` (
