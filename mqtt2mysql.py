@@ -18,7 +18,7 @@ import signal
 import ssl
 import argparse
 
-VER = '1.1.0008'
+VER = '1.1.0009'
 
 args = {}
 
@@ -30,13 +30,13 @@ def log(msg):
 		logfile.write(str(time.strftime("%Y-%m-%d %H:%M:%S")) + ': ' + msg + '\n')
 		logfile.close()
 
-def on_connect(client, userdata, message):
+def on_connect(client, userdata, message, rc):
 	"""
 	Upon successfully being connected, we subscribe to the check_topic
 	"""
 
 	if args.debug>0:
-		log("on_connect message %s" % str(message))
+		log("on_connect message %s, rc=%s" % (str(message), str(rc)) )
 	for topic in args.mqtt_topic:
 		if args.debug>0:
 			log("subscribing to topic %s" % topic)
