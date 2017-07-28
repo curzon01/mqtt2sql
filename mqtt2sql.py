@@ -19,7 +19,7 @@ import signal
 import ssl
 import argparse
 
-VER = '1.3.0013'
+VER = '1.3.0014'
 
 args = {}
 
