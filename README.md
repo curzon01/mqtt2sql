@@ -40,7 +40,7 @@ CREATE TABLE `mqtt` (
 	`topic`	 TEXT NOT NULL UNIQUE,
 	`value`	 TEXT NOT NULL,
 	`qos`    INTEGER,
-	`retain` INTEGER,
+	`retain` INTEGER
 );
 ```
 
