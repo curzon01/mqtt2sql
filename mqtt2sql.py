@@ -14,12 +14,12 @@ import paho.mqtt.client as mqtt
 import MySQLdb
 import sqlite3
 import os, sys
-import time
+import time, datetime
 import signal
 import ssl
 import argparse
 
-VER = '1.2.0012'
+VER = '1.3.0013'
 
 args = {}
 
@@ -31,7 +31,7 @@ def log(msg):
 	"""
 
 	strtime=str(time.strftime("%Y-%m-%d %H:%M:%S"))
-	print strtime+': '+msg
+	# print strtime+': '+msg
 	if args.logfile is not None:
 		filename = 	str(time.strftime(args.logfile, time.localtime()))
 		logfile = open(filename, "a")
@@ -88,7 +88,8 @@ def on_message(client, userdata, message):
 		an instance of MQTTMessage.
 		This is a class with members topic, payload, qos, retain.
 	"""
-	log(message.topic+' '+str(message.payload) + ' [QOS '+str(message.qos)+']')
+	if args.verbose>0:
+		log('{} {} [QOS {} Retain {}]'.format(message.topic, message.payload, message.qos, message.retain))
 
 	try:
 		debuglog(1,"SQL type is '{}'".format(args.sqltype))
@@ -100,16 +101,21 @@ def on_message(client, userdata, message):
 		cursor = db.cursor()
 
 		try:
-			# INSERT or UPDATE
+			# INSERT/UPDATE record
+			if message.payload!='':
+				active = ', active=1'
+			else:
+				active = ''
+			ts = datetime.datetime.fromtimestamp(int(message.timestamp)).strftime('%Y-%m-%d %H:%M:%S')
 			if args.sqltype=='mysql':
-				cursor.execute("INSERT INTO `{0}` SET `topic`='{1}', `value`='{2}' ON DUPLICATE KEY UPDATE `value`='{2}'".format(args.sqltable, message.topic, message.payload))
+				cursor.execute("INSERT INTO `{0}` SET `ts`='{1}',`topic`='{2}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6} ON DUPLICATE KEY UPDATE `ts`='{1}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6}".format(args.sqltable, ts, message.topic, message.payload, message.qos, message.retain, active))
 			elif args.sqltype=='sqlite':
-				strtime=str(time.strftime("%Y-%m-%d %H:%M:%S"))
-				cursor.execute("INSERT OR IGNORE INTO `{0}` (ts,topic,value) VALUES('{1}','{2}','{3}')".format(args.sqltable, strtime, message.topic, message.payload))
-				cursor.execute("UPDATE `{0}` SET ts='{1}', value='{3}' WHERE topic='{2}'".format(args.sqltable, strtime, message.topic, message.payload))
+				# strtime=str(time.strftime("%Y-%m-%d %H:%M:%S"))
+				cursor.execute("INSERT OR IGNORE INTO `{0}` (ts,topic,value,qos,retain) VALUES('{1}','{2}','{3}','{4}','{5}')".format(args.sqltable, ts, message.topic, message.payload, message.qos, message.retain))
+				cursor.execute("UPDATE `{0}` SET ts='{1}', value='{3}', qos='{4}', retain='{5}' WHERE topic='{2}'".format(args.sqltable, ts, message.topic, message.payload, message.qos, message.retain))
 
 			db.commit()
-			debuglog(1,"SQL successful written: table='{}', topic='{}', value'{}'".format(args.sqltable, message.topic, str(message.payload)))
+			debuglog(1,"SQL successful written: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(args.sqltable, message.topic, message.payload, message.qos, message.retain))
 
 		except MySQLdb.Error, e:
 			try:
@@ -308,7 +314,11 @@ if __name__ == "__main__":
 	# Main loop as long as no error occurs
 	rc = 0
 	while rc == 0:
-		rc = mqttc.loop()
+		try:
+			rc = mqttc.loop()
+		except Exception, e:
+			log('ERROR: loop() - {}'.format(e))
+			time.sleep(0.25)
 
 	# disconnect from server
 	exit(rc,"MQTT disconnected")
