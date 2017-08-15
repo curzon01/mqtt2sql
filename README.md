@@ -6,7 +6,7 @@ This python script subscribes to MQTT broker topic and inserts the topic into a 
 * Paho MQTT, MySQLdb and/or sqlite3 python lib are neccessary. To install it to you python environment use
 ```
 sudo apt-get install python-pip python-mysqldb python-pysqlite2
-sudo pip install paho-mqtt argparse
+sudo pip install paho-mqtt configargparse
 ```
 * Check that pip installed pao-mqtt greater or equal Version: 1.2.3, e.g.
 ```
