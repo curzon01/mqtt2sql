@@ -16,10 +16,11 @@ import sqlite3
 import os, sys
 import time, datetime
 import signal
+import logging
 import ssl
 import configargparse
 
-VER = '1.4.0015'
+VER = '1.4.0016'
 
 args = {}
 
@@ -98,7 +99,21 @@ def on_connect(client, userdata, message, rc):
 		the connection result
 	"""
 
-	debuglog(1,"on_connect message {}, rc={}".format(message, rc) )
+	if rc==0:
+		errtext="Connection successful"
+	elif rc==1:
+		errtext="Connection refused: Unacceptable protocol version"
+	elif rc==2:
+		errtext="Connection refused: Identifier rejected"
+	elif rc==3:
+		errtext="Connection refused: Server unavailable"
+	elif rc==4:
+		errtext="Connection refused: Bad user name or password"
+	elif rc==5:
+		errtext="Connection refused: Not authorized"
+	elif rc>5:
+		errtext="Connection refused: Unknown reason"
+	debuglog(1,"MQTT on_connect() returns rc={}: {}".format(rc, errtext) )
 	for topic in args.mqtttopic:
 		debuglog(1,"subscribing to topic {}".format(topic))
 		client.subscribe(topic, 0)
@@ -317,6 +332,17 @@ if __name__ == "__main__":
 
 	# Create MQTT client and set callback handler
 	mqttc = mqtt.Client(scriptname)
+	if args.debug>0:
+		if args.debug==1:
+			logging.basicConfig(level=logging.DEBUG)
+		elif args.debug==2:
+			logging.basicConfig(level=logging.WARNING)
+		elif args.debug==3:
+			logging.basicConfig(level=logging.INFO)
+		elif args.debug>=4:
+			logging.basicConfig(level=logging.DEBUG)
+		logger = logging.getLogger(__name__)
+		mqttc.enable_logger(logger)
 	mqttc.on_connect = on_connect
 	mqttc.on_message = on_message
 	mqttc.on_publish = on_publish
@@ -339,8 +365,10 @@ if __name__ == "__main__":
 		mqttc.username_pw_set(args.mqttusername, args.mqttpassword)
 
 	# Attempt to connect to broker. If this fails, issue CRITICAL
+	debuglog(1,"mqttc.connect({}, {}, 60)".format(args.mqtthost, args.mqttport))
 	try:
-		mqttc.connect(args.mqtthost, args.mqttport, 60)
+		rc=mqttc.connect(args.mqtthost, args.mqttport, 60)
+		debuglog(1,"mqttc.connect() return {}".format(rc))
 	except Exception, e:
 		exit(3, 'Connection to {}:{} failed: {}'.format(args.mqtthost, args.mqttport, str(e)))
 

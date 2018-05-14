@@ -8,7 +8,7 @@ This python script subscribes to MQTT broker topic and inserts the topic into a 
 sudo apt-get install python-pip python-mysqldb python-pysqlite2
 sudo pip install paho-mqtt configargparse
 ```
-* Check that pip installed pao-mqtt greater or equal Version: 1.2.3, e.g.
+* __Check__ that pip installed __pao-mqtt greater or equal version 1.2.3__, e.g.
 ```
 $ sudo pip show paho-mqtt
 Name: paho-mqtt
