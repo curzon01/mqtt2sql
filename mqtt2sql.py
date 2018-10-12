@@ -29,7 +29,7 @@ try:
 except ImportError, e:
     ModuleImportError(e)
 
-VER = '1.5.0018'
+VER = '1.5.0019'
 
 args = {}
 
@@ -115,8 +115,8 @@ def write2sql(message):
     except IndexError:
         log("MySQL Error: {}".format(e))
 
-    deadlocktry = 10
-    while deadlocktry>0:
+    transactionretry = 10
+    while transactionretry>0:
         cursor = db.cursor()
 
         try:
@@ -135,19 +135,19 @@ def write2sql(message):
 
             db.commit()
             debuglog(1,"SQL successful written: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(args.sqltable, message.topic, message.payload, message.qos, message.retain))
-            deadlocktry = 0
+            transactionretry = 0
 
         except MySQLdb.Error, e:
-            deadloadfound = args.sqltype=='mysql' and e.args[0]==1213
+            deadloadfound = args.sqltype=='mysql' and e.args[0] in [1205,1213]
 
             if deadloadfound:
-                deadlocktry -= 1
+                transactionretry -= 1
                 time.sleep(random())
             else:
                 log("MySQL Error [{}]: {}".format(e.args[0], e.args[1]))
                 # Rollback in case there is any error
                 db.rollback()
-                deadlocktry = 0
+                transactionretry = 0
     db.close()
     
 
