@@ -24,10 +24,12 @@ try:
     import logging
     import ssl
     import configargparse
+    from threading import Thread
+    from random import random
 except ImportError, e:
     ModuleImportError(e)
 
-VER = '1.5.0017'
+VER = '1.5.0018'
 
 args = {}
 
@@ -93,6 +95,62 @@ def debuglog(dbglevel, msg):
     if args.debug>dbglevel:
         log(msg)
 
+def write2sql(message):
+    """
+    Called as thread from mqtt backlog handler when a message has been
+    received on a topic that the client subscribes to.
+
+    @param message:
+        an instance of MQTTMessage.
+        This is a class with members topic, payload, qos, retain.
+    """
+    db = None
+    
+    debuglog(1,"SQL type is '{}'".format(args.sqltype))
+    try:
+        if args.sqltype=='mysql':
+            db = MySQLdb.connect(args.sqlhost, args.sqlusername, args.sqlpassword, args.sqldb)
+        elif args.sqltype=='sqlite':
+            db = sqlite3.connect(args.sqldb)
+    except IndexError:
+        log("MySQL Error: {}".format(e))
+
+    deadlocktry = 10
+    while deadlocktry>0:
+        cursor = db.cursor()
+
+        try:
+            # INSERT/UPDATE record
+            if message.payload!='':
+                active = ', active=1'
+            else:
+                active = ''
+            ts = datetime.datetime.fromtimestamp(int(message.timestamp)).strftime('%Y-%m-%d %H:%M:%S')
+            if args.sqltype=='mysql':
+                cursor.execute("INSERT INTO `{0}` SET `ts`='{1}',`topic`='{2}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6} ON DUPLICATE KEY UPDATE `ts`='{1}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6}".format(args.sqltable, ts, message.topic, message.payload, message.qos, message.retain, active))
+            elif args.sqltype=='sqlite':
+                # strtime=str(time.strftime("%Y-%m-%d %H:%M:%S"))
+                cursor.execute("INSERT OR IGNORE INTO `{0}` (ts,topic,value,qos,retain) VALUES('{1}','{2}','{3}','{4}','{5}')".format(args.sqltable, ts, message.topic, message.payload, message.qos, message.retain))
+                cursor.execute("UPDATE `{0}` SET ts='{1}', value='{3}', qos='{4}', retain='{5}' WHERE topic='{2}'".format(args.sqltable, ts, message.topic, message.payload, message.qos, message.retain))
+
+            db.commit()
+            debuglog(1,"SQL successful written: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(args.sqltable, message.topic, message.payload, message.qos, message.retain))
+            deadlocktry = 0
+
+        except MySQLdb.Error, e:
+            deadloadfound = args.sqltype=='mysql' and e.args[0]==1213
+
+            if deadloadfound:
+                deadlocktry -= 1
+                time.sleep(random())
+            else:
+                log("MySQL Error [{}]: {}".format(e.args[0], e.args[1]))
+                # Rollback in case there is any error
+                db.rollback()
+                deadlocktry = 0
+    db.close()
+    
+
 def on_connect(client, userdata, message, rc):
     """
     Called when the broker responds to our connection request.
@@ -143,47 +201,7 @@ def on_message(client, userdata, message):
     if args.verbose>0:
         log('{} {} [QOS {} Retain {}]'.format(message.topic, message.payload, message.qos, message.retain))
 
-    try:
-        debuglog(1,"SQL type is '{}'".format(args.sqltype))
-        if args.sqltype=='mysql':
-            db = MySQLdb.connect(args.sqlhost, args.sqlusername, args.sqlpassword, args.sqldb)
-        elif args.sqltype=='sqlite':
-            db = sqlite3.connect(args.sqldb)
-
-        cursor = db.cursor()
-
-        try:
-            # INSERT/UPDATE record
-            if message.payload!='':
-                active = ', active=1'
-            else:
-                active = ''
-            ts = datetime.datetime.fromtimestamp(int(message.timestamp)).strftime('%Y-%m-%d %H:%M:%S')
-            if args.sqltype=='mysql':
-                cursor.execute("INSERT INTO `{0}` SET `ts`='{1}',`topic`='{2}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6} ON DUPLICATE KEY UPDATE `ts`='{1}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6}".format(args.sqltable, ts, message.topic, message.payload, message.qos, message.retain, active))
-            elif args.sqltype=='sqlite':
-                # strtime=str(time.strftime("%Y-%m-%d %H:%M:%S"))
-                cursor.execute("INSERT OR IGNORE INTO `{0}` (ts,topic,value,qos,retain) VALUES('{1}','{2}','{3}','{4}','{5}')".format(args.sqltable, ts, message.topic, message.payload, message.qos, message.retain))
-                cursor.execute("UPDATE `{0}` SET ts='{1}', value='{3}', qos='{4}', retain='{5}' WHERE topic='{2}'".format(args.sqltable, ts, message.topic, message.payload, message.qos, message.retain))
-
-            db.commit()
-            debuglog(1,"SQL successful written: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(args.sqltable, message.topic, message.payload, message.qos, message.retain))
-
-        except MySQLdb.Error, e:
-            try:
-                log("MySQL Error [{}]: {}".format(e.args[0], e.args[1]))
-
-            except IndexError:
-                log("MySQL Error: {}".format(e))
-
-            # Rollback in case there is any error
-            db.rollback()
-            log('ERROR adding record to MYSQL')
-
-    except IndexError:
-        log("MySQL Error: {}".format(e))
-
-    db.close()
+    Thread(target=write2sql, args=(message,)).start()
 
 
 def on_publish(client, userdata, mid):
@@ -262,11 +280,10 @@ class SignalHandler:
     def __init__(self):
         signal.signal(signal.SIGINT,  self.exitus)
         signal.signal(signal.SIGTERM, self.exitus)
-        signal.signal(signal.SIGTSTP, self.exitus)
 
     def exitus(self, signal, frame):
         log('{} v{} end - signal {}'.format(scriptname, VER, signal))
-        sys.exit(0)
+        sys.exit(signal)
 
 
 if __name__ == "__main__":
