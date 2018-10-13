@@ -11,8 +11,10 @@ sudo pip install paho-mqtt configargparse
 * __Check__ that pip installed __pao-mqtt greater or equal version 1.2.3__, e.g.
 ```
 $ sudo pip show paho-mqtt
+...
 Name: paho-mqtt
 Version: 1.3.0
+...
 ```
 * Create database table using SQL command
 #### MySQL

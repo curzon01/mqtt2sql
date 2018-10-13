@@ -16,23 +16,39 @@ def ModuleImportError(module):
     print("{}. Try 'pip install {}' to install".format(er,er.split(' ')[len(er.split(' '))-1]) )
     sys.exit(9)
 try:
+    import imp
     import paho.mqtt.client as mqtt
-    import MySQLdb
-    import sqlite3
     import time, datetime
     import signal
     import logging
-    import ssl
     import configargparse
-    from threading import Thread
+    from threading import Thread, BoundedSemaphore
     from random import random
 except ImportError, e:
     ModuleImportError(e)
 
-VER = '1.5.0019'
+try:
+    imp.find_module('ssl')
+    import ssl
+    module_ssl = True
+except ImportError:
+    module_ssl = False
+try:
+    imp.find_module('MySQLdb')
+    import MySQLdb
+    module_MySQLdb = True
+except ImportError:
+    module_MySQLdb = False
+try:
+    imp.find_module('sqlite3')
+    import sqlite3
+    module_sqlite3 = True
+except ImportError:
+    module_sqlite3 = False
+
+VER = '1.5.0020'
 
 args = {}
-
 DEFAULTS = {
      'DEFAULT': 
         { 'configfile'  : None
@@ -53,15 +69,17 @@ DEFAULTS = {
          ,'keepalive'   : 60
         }
     ,'SQL':
-        { 'type'        : 'mysql'
+        { 'type'        : 'mysql' if module_MySQLdb else ('sqlite' if 'module_sqlite3' else None)
          ,'host'        : 'localhost'
          ,'port'        : 3306
          ,'username'    : None
          ,'password'    : None
          ,'db'          : None
          ,'table'       : 'mqtt'
+         ,'sqlmaxconnection': 50
         }
 }
+
 
 def log(msg):
     """
@@ -104,6 +122,8 @@ def write2sql(message):
         an instance of MQTTMessage.
         This is a class with members topic, payload, qos, retain.
     """
+    pool_sqlconnections.acquire()
+
     db = None
     
     debuglog(1,"SQL type is '{}'".format(args.sqltype))
@@ -118,7 +138,6 @@ def write2sql(message):
     transactionretry = 10
     while transactionretry>0:
         cursor = db.cursor()
-
         try:
             # INSERT/UPDATE record
             if message.payload!='':
@@ -138,17 +157,25 @@ def write2sql(message):
             transactionretry = 0
 
         except MySQLdb.Error, e:
-            deadloadfound = args.sqltype=='mysql' and e.args[0] in [1205,1213]
+            retry = args.sqltype=='mysql' and e.args[0] in [1040,1205,1213]
 
-            if deadloadfound:
+            if retry:
                 transactionretry -= 1
-                time.sleep(random())
+                transactiondelay = random()
+                if args.sqltype=='mysql' and e.args[0] in [1040]:
+                    transactiondelay *= 2
+                time.sleep(transactiondelay)
             else:
                 log("MySQL Error [{}]: {}".format(e.args[0], e.args[1]))
                 # Rollback in case there is any error
                 db.rollback()
                 transactionretry = 0
+
+        finally:
+            cursor.close()
+
     db.close()
+    pool_sqlconnections.release()
     
 
 def on_connect(client, userdata, message, rc):
@@ -291,34 +318,43 @@ if __name__ == "__main__":
     sig = SignalHandler()
 
     # Parse command line arguments
-    parser = configargparse.ArgumentParser(description='MQTT to MySQL transfer.',
-                                     epilog="Subscribes to MQTT broker topic(s) and copy the values into a given mysql database table")
-    parser.add_argument('-c', '--configfile',               metavar="<filename>",       dest='configfile',is_config_file=True,default=DEFAULTS['DEFAULT']['configfile'],    help='Config file, can be used instead of command parameter (defaults to {})'.format(DEFAULTS['DEFAULT']['configfile']))
+    parser = configargparse.ArgumentParser(description='MQTT to MySQL bridge. Subscribes to MQTT broker topic(s) and write values into a database.',
+                                     epilog="There are no required arguments, defaults are displayed using --help.")
+    parser.add_argument('-c', '--configfile',               metavar="<filename>",       dest='configfile',is_config_file=True,default=DEFAULTS['DEFAULT']['configfile'],    help="Config file, can be used instead of command parameter (default {})".format(DEFAULTS['DEFAULT']['configfile']))
 
     mqtt_group = parser.add_argument_group('MQTT Options')
-    mqtt_group.add_argument('--mqtthost','--host',          metavar='<host>',           dest='mqtthost',                    default=DEFAULTS['MQTT']['host'],           help='MQTT host to connect to (defaults to {})'.format(DEFAULTS['MQTT']['host']))
-    mqtt_group.add_argument('--mqttport','--port',          metavar='<port>',           dest='mqttport',    type=int,       default=DEFAULTS['MQTT']['port'],           help='MQTT network port to connect to (defaults to {})'.format(DEFAULTS['MQTT']['port']))
-    mqtt_group.add_argument('--mqttusername','--username',  metavar='<username>',       dest='mqttusername',                default=DEFAULTS['MQTT']['username'],       help='MQTT username (defaults to {})'.format(DEFAULTS['MQTT']['username']))
-    mqtt_group.add_argument('--mqttpassword','--password',  metavar='<password>',       dest='mqttpassword',                default=DEFAULTS['MQTT']['password'],       help='MQTT password (defaults to {})'.format(DEFAULTS['MQTT']['password']))
-    mqtt_group.add_argument('--topic',                      metavar='<topic>',          dest='mqtttopic',   nargs='*',      default=DEFAULTS['MQTT']['topic'],          help='MQTT topic to use (defaults to {})'.format(DEFAULTS['MQTT']['topic']))
-    mqtt_group.add_argument('--cafile',                     metavar='<cafile>',         dest='mqttcafile',                  default=DEFAULTS['MQTT']['cafile'],         help='MQTT cafile (defaults to {})'.format(DEFAULTS['MQTT']['cafile']))
-    mqtt_group.add_argument('--certfile',                   metavar='<certfile>',       dest='mqttcertfile',                default=DEFAULTS['MQTT']['certfile'],       help='MQTT certfile (defaults to {})'.format(DEFAULTS['MQTT']['certfile']))
-    mqtt_group.add_argument('--keyfile',                    metavar='<keyfile>',        dest='mqttkeyfile',                 default=DEFAULTS['MQTT']['keyfile'],        help='MQTT keyfile (defaults to {})'.format(DEFAULTS['MQTT']['keyfile']))
-    mqtt_group.add_argument('--insecure',                                               dest='mqttinsecure',action='store_true',default=DEFAULTS['MQTT']['insecure'],   help='suppress TLS verification (defaults to {})'.format(DEFAULTS['MQTT']['insecure']))
-    mqtt_group.add_argument('--keepalive',                  metavar='<sec>',            dest='keepalive',   type=int,       default=DEFAULTS['MQTT']['keepalive'],      help='MQTT keepalive timeout for the client (defaults to {})'.format(DEFAULTS['MQTT']['keepalive']))
+    mqtt_group.add_argument('--mqtthost','--host',          metavar='<host>',           dest='mqtthost',                    default=DEFAULTS['MQTT']['host'],           help="host to connect to (default '{}')".format(DEFAULTS['MQTT']['host']))
+    mqtt_group.add_argument('--mqttport','--port',          metavar='<port>',           dest='mqttport',    type=int,       default=DEFAULTS['MQTT']['port'],           help="port to connect to (default {})".format(DEFAULTS['MQTT']['port']))
+    mqtt_group.add_argument('--mqttusername','--username',  metavar='<username>',       dest='mqttusername',                default=DEFAULTS['MQTT']['username'],       help="username (default {})".format(DEFAULTS['MQTT']['username']))
+    mqtt_group.add_argument('--mqttpassword','--password',  metavar='<password>',       dest='mqttpassword',                default=DEFAULTS['MQTT']['password'],       help="password (default {})".format(DEFAULTS['MQTT']['password']))
+    mqtt_group.add_argument('--topic',                      metavar='<topic>',          dest='mqtttopic',   nargs='*',      default=DEFAULTS['MQTT']['topic'],          help="topic to use (default {})".format(DEFAULTS['MQTT']['topic']))
+    if module_ssl:
+        mqtt_group.add_argument('--cafile',                     metavar='<cafile>',         dest='mqttcafile',                  default=DEFAULTS['MQTT']['cafile'],         help="cafile (default {})".format(DEFAULTS['MQTT']['cafile']))
+        mqtt_group.add_argument('--certfile',                   metavar='<certfile>',       dest='mqttcertfile',                default=DEFAULTS['MQTT']['certfile'],       help="certfile (default {})".format(DEFAULTS['MQTT']['certfile']))
+        mqtt_group.add_argument('--keyfile',                    metavar='<keyfile>',        dest='mqttkeyfile',                 default=DEFAULTS['MQTT']['keyfile'],        help="keyfile (default {})".format(DEFAULTS['MQTT']['keyfile']))
+        mqtt_group.add_argument('--insecure',                                               dest='mqttinsecure',action='store_true',default=DEFAULTS['MQTT']['insecure'],   help="suppress TLS verification (default {})".format(DEFAULTS['MQTT']['insecure']))
+    mqtt_group.add_argument('--keepalive',                  metavar='<sec>',            dest='keepalive',   type=int,       default=DEFAULTS['MQTT']['keepalive'],      help="keepalive timeout for the client (default {})".format(DEFAULTS['MQTT']['keepalive']))
     
     sql_group = parser.add_argument_group('SQL Options')
-    sqltypes = ['mysql','sqlite']
-    sql_group.add_argument('--sqltype',                     metavar='<type>',           dest='sqltype',     choices=sqltypes,default=DEFAULTS['SQL']['type'],           help='SQL type to connect (defaults to {}), types are {}'.format(DEFAULTS['SQL']['type'], sqltypes))
-    sql_group.add_argument('--sqlhost',                     metavar='<host>',           dest='sqlhost',                     default=DEFAULTS['SQL']['host'],            help='SQL host to connect (defaults to {})'.format(DEFAULTS['SQL']['host']))
-    sql_group.add_argument('--sqlport',                     metavar='<port>',           dest='sqlport',     type=int,       default=DEFAULTS['SQL']['port'],            help='SQL network port to connect (defaults to {})'.format(DEFAULTS['SQL']['port']))
-    sql_group.add_argument('--sqlusername',                 metavar='<username>',       dest='sqlusername',                 default=DEFAULTS['SQL']['username'],        help='SQL username (defaults to {})'.format(DEFAULTS['SQL']['username']))
-    sql_group.add_argument('--sqlpassword',                 metavar='<password>',       dest='sqlpassword',                 default=DEFAULTS['SQL']['password'],        help='SQL password (defaults to {})'.format(DEFAULTS['SQL']['password']))
-    sql_group.add_argument('--sqldb',                       metavar='<db>',             dest='sqldb',                       default=DEFAULTS['SQL']['db'],              help='SQL database to use (defaults to {})'.format(DEFAULTS['SQL']['db']))
-    sql_group.add_argument('--sqltable',                    metavar='<table>',          dest='sqltable',                    default=DEFAULTS['SQL']['table'],           help='SQL database table to use (defaults to {})'.format(DEFAULTS['SQL']['table']))
+    sqltypes = []
+    if module_MySQLdb:
+        sqltypes.append('mysql')
+    if module_sqlite3:
+        sqltypes.append('sqlite')
+    if len(sqltypes)==0:
+        exit(3, 'Either module MySQLdb or sqlite must be installed')
+
+    sql_group.add_argument('--sqltype',                     metavar='<type>',           dest='sqltype',     choices=sqltypes,default=DEFAULTS['SQL']['type'],           help="server type {} (default '{}')".format(sqltypes, DEFAULTS['SQL']['type']))
+    sql_group.add_argument('--sqlhost',                     metavar='<host>',           dest='sqlhost',                     default=DEFAULTS['SQL']['host'],            help="host to connect (default '{}')".format(DEFAULTS['SQL']['host']))
+    sql_group.add_argument('--sqlport',                     metavar='<port>',           dest='sqlport',     type=int,       default=DEFAULTS['SQL']['port'],            help="port to connect (default {})".format(DEFAULTS['SQL']['port']))
+    sql_group.add_argument('--sqlusername',                 metavar='<username>',       dest='sqlusername',                 default=DEFAULTS['SQL']['username'],        help="username (default {})".format(DEFAULTS['SQL']['username']))
+    sql_group.add_argument('--sqlpassword',                 metavar='<password>',       dest='sqlpassword',                 default=DEFAULTS['SQL']['password'],        help="password (default {})".format(DEFAULTS['SQL']['password']))
+    sql_group.add_argument('--sqldb',                       metavar='<db>',             dest='sqldb',                       default=DEFAULTS['SQL']['db'],              help="database to use (default '{}')".format(DEFAULTS['SQL']['db']))
+    sql_group.add_argument('--sqltable',                    metavar='<table>',          dest='sqltable',                    default=DEFAULTS['SQL']['table'],           help="table to use (default '{}')".format(DEFAULTS['SQL']['table']))
+    sql_group.add_argument('--sqlmaxconnection',            metavar='<num>',            dest='sqlmaxconnection',type=int,   default=DEFAULTS['SQL']['sqlmaxconnection'],help="maximum number of parallel connections (default {})".format(DEFAULTS['SQL']['sqlmaxconnection']))
 
     logging_group = parser.add_argument_group('Informational')
-    logging_group.add_argument('-l','--logfile',            metavar='<filename>',       dest='logfile',                     default=DEFAULTS['DEFAULT']['logfile'], help='additional logfile (defaults to {}'.format(DEFAULTS['DEFAULT']['logfile']))
+    logging_group.add_argument('-l','--logfile',            metavar='<filename>',       dest='logfile',                     default=DEFAULTS['DEFAULT']['logfile'],     help="optional logfile (default {}".format(DEFAULTS['DEFAULT']['logfile']))
     logging_group.add_argument('-d','--debug',                                          dest='debug', action='count',                                                   help='debug output')
     logging_group.add_argument('-v','--verbose',                                        dest='verbose', action='count',                                                 help='verbose output')
     logging_group.add_argument('-V','--version',                                        action='version',version='%(prog)s v'+VER)
@@ -335,7 +371,7 @@ if __name__ == "__main__":
         log('  MQTT server: {}:{} {}{} keepalive {}'.format(args.mqtthost, args.mqttport, 'SSL' if (args.mqttcafile is not None) else '', ' (suppress TLS verification)' if args.mqttinsecure else '', args.keepalive))
         log('  MQTT user:   {}'.format(args.mqttusername))
         log('  MQTT topics: {}'.format(args.mqtttopic))
-        log('  SQL server:  {}:{}, type \'{}\', db \'{}\', table \'{}\''.format(args.sqlhost, args.sqlport, args.sqltype, args.sqldb, args.sqltable))
+        log('  SQL server:  {}:{}, type \'{}\', db \'{}\', table \'{}\' ({})'.format(args.sqlhost, args.sqlport, args.sqltype, args.sqldb, args.sqltable, args.sqlmaxconnection))
         log('  SQL user:    {}'.format(args.sqlusername))
         if args.logfile is not None:
             log('  Log file:    {}'.format(args.logfile))
@@ -343,6 +379,8 @@ if __name__ == "__main__":
             log('  Debug level: {}'.format(args.debug))
         if args.verbose > 0:
             log('  Verbose level: {}'.format(args.verbose))
+
+    pool_sqlconnections = BoundedSemaphore(value=args.sqlmaxconnection)
 
     # Create MQTT client and set callback handler
     userdata = {
