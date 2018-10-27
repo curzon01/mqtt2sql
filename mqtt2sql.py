@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-VER = '1.5.0021'
+VER = '1.5.0022'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -348,11 +348,10 @@ if __name__ == "__main__":
     mqtt_group.add_argument('--mqttusername','--username',  metavar='<username>',       dest='mqttusername',                default=DEFAULTS['MQTT']['username'],       help="username (default {})".format(DEFAULTS['MQTT']['username']))
     mqtt_group.add_argument('--mqttpassword','--password',  metavar='<password>',       dest='mqttpassword',                default=DEFAULTS['MQTT']['password'],       help="password (default {})".format(DEFAULTS['MQTT']['password']))
     mqtt_group.add_argument('--topic',                      metavar='<topic>',          dest='mqtttopic',   nargs='*',      default=DEFAULTS['MQTT']['topic'],          help="topic to use (default {})".format(DEFAULTS['MQTT']['topic']))
-    if module_ssl:
-        mqtt_group.add_argument('--cafile',                     metavar='<cafile>',         dest='mqttcafile',                  default=DEFAULTS['MQTT']['cafile'],         help="cafile (default {})".format(DEFAULTS['MQTT']['cafile']))
-        mqtt_group.add_argument('--certfile',                   metavar='<certfile>',       dest='mqttcertfile',                default=DEFAULTS['MQTT']['certfile'],       help="certfile (default {})".format(DEFAULTS['MQTT']['certfile']))
-        mqtt_group.add_argument('--keyfile',                    metavar='<keyfile>',        dest='mqttkeyfile',                 default=DEFAULTS['MQTT']['keyfile'],        help="keyfile (default {})".format(DEFAULTS['MQTT']['keyfile']))
-        mqtt_group.add_argument('--insecure',                                               dest='mqttinsecure',action='store_true',default=DEFAULTS['MQTT']['insecure'],   help="suppress TLS verification (default {})".format(DEFAULTS['MQTT']['insecure']))
+    mqtt_group.add_argument('--cafile',                     metavar='<cafile>',         dest='mqttcafile',                  default=DEFAULTS['MQTT']['cafile'],         help="cafile (default {})".format(DEFAULTS['MQTT']['cafile']) if module_ssl else configargparse.SUPPRESS)
+    mqtt_group.add_argument('--certfile',                   metavar='<certfile>',       dest='mqttcertfile',                default=DEFAULTS['MQTT']['certfile'],       help="certfile (default {})".format(DEFAULTS['MQTT']['certfile']) if module_ssl else configargparse.SUPPRESS)
+    mqtt_group.add_argument('--keyfile',                    metavar='<keyfile>',        dest='mqttkeyfile',                 default=DEFAULTS['MQTT']['keyfile'],        help="keyfile (default {})".format(DEFAULTS['MQTT']['keyfile']) if module_ssl else configargparse.SUPPRESS)
+    mqtt_group.add_argument('--insecure',                                               dest='mqttinsecure',action='store_true',default=DEFAULTS['MQTT']['insecure'],   help="suppress TLS verification (default {})".format(DEFAULTS['MQTT']['insecure']) if module_ssl else configargparse.SUPPRESS)
     mqtt_group.add_argument('--keepalive',                  metavar='<sec>',            dest='keepalive',   type=int,       default=DEFAULTS['MQTT']['keepalive'],      help="keepalive timeout for the client (default {})".format(DEFAULTS['MQTT']['keepalive']))
     
     sql_group = parser.add_argument_group('SQL Options')
