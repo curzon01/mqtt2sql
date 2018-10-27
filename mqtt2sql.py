@@ -1,14 +1,36 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-#
-# Script Name: mqtt2sql.py
-# Type:        Python Script
-# Created:     2017-03-27
-# Description: Subscribes to MQTT broker topic and inserts the topic
-#              into a sql database table
-# Author:      Norbert Richter <norbert.richter@p-r-solution.de>
-#
-# Parameter:   see mqtt2sql.py --help
+VER = '1.5.0021'
+
+"""
+    mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
+
+    Copyright (C) 2018 Norbert Richter <nr@prsolution.eu>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+Requirements:
+    Python and Paho MQTT, MySQLdb and/or sqlite3 python lib:
+    sudo apt-get install pyhton python-pip python-mysqldb python-pysqlite2
+    sudo pip install paho-mqtt configargparse
+
+
+Usage:
+    See README.md for more details how to install and use
+
+"""
 
 import os, sys
 def ModuleImportError(module):
@@ -46,7 +68,6 @@ try:
 except ImportError:
     module_sqlite3 = False
 
-VER = '1.5.0020'
 
 args = {}
 DEFAULTS = {
@@ -122,8 +143,6 @@ def write2sql(message):
         an instance of MQTTMessage.
         This is a class with members topic, payload, qos, retain.
     """
-    pool_sqlconnections.acquire()
-
     db = None
     
     debuglog(1,"SQL type is '{}'".format(args.sqltype))
@@ -228,6 +247,7 @@ def on_message(client, userdata, message):
     if args.verbose>0:
         log('{} {} [QOS {} Retain {}]'.format(message.topic, message.payload, message.qos, message.retain))
 
+    pool_sqlconnections.acquire()
     Thread(target=write2sql, args=(message,)).start()
 
 
