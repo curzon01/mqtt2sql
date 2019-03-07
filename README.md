@@ -1,6 +1,11 @@
 # mqtt2sql
 This python script subscribes to MQTT broker topic and inserts the topic into a SQL database table
 
+# Content
+* [Installation](#installation)
+* [Usage](#usage)
+* [History data](#history-data)
+
 ## Installation
 ### Prerequisite
 * Paho MQTT, MySQLdb and/or sqlite3 python lib are neccessary. To install it to you python environment use
@@ -90,4 +95,33 @@ sudo systemctl status mqtt2sql
 Finally be sure the service is enabled:
 ```
 sudo systemctl enable mqtt2sql
+```
+
+## History data
+If we need additonal history data we can use SQL trigger on the basic table `mqtt` 
+to record each inserted/updated record into a second history table `mqtt_history`.
+
+### Create MySQL history table and trigger
+
+```
+CREATE TABLE `mqtt_history` (
+	`id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+	`ts` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	`topic_id` SMALLINT(5) UNSIGNED NOT NULL,
+	`value` LONGTEXT NOT NULL,
+	PRIMARY KEY (`id`),
+	INDEX `topicid` (`topicid`),
+	INDEX `ts` (`ts`)
+)
+COLLATE='utf8_general_ci'
+ENGINE=InnoDB;
+
+DELIMITTER //
+CREATE TRIGGER `mqtt_after_insert` AFTER INSERT ON `mqtt` FOR EACH ROW BEGIN
+	INSERT INTO mqtt_history SET ts=NEW.ts, topic_id=NEW.id, value=NEW.value;
+END//
+CREATE TRIGGER `mqtt_after_update` AFTER UPDATE ON `mqtt` FOR EACH ROW BEGIN
+	INSERT INTO mqtt_history SET ts=NEW.ts, topic_id=NEW.id, value=NEW.value;
+END//
+DELIMITTER ;
 ```
