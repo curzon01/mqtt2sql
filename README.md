@@ -116,12 +116,12 @@ CREATE TABLE `mqtt_history` (
 COLLATE='utf8_general_ci'
 ENGINE=InnoDB;
 
-DELIMITTER //
+DELIMITER //
 CREATE TRIGGER `mqtt_after_insert` AFTER INSERT ON `mqtt` FOR EACH ROW BEGIN
 	INSERT INTO mqtt_history SET ts=NEW.ts, topic_id=NEW.id, value=NEW.value;
 END//
 CREATE TRIGGER `mqtt_after_update` AFTER UPDATE ON `mqtt` FOR EACH ROW BEGIN
 	INSERT INTO mqtt_history SET ts=NEW.ts, topic_id=NEW.id, value=NEW.value;
 END//
-DELIMITTER ;
+DELIMITER ;
 ```
