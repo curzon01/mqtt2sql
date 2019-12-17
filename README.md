@@ -1,24 +1,34 @@
 # mqtt2sql
-This python script subscribes to MQTT broker topic and inserts the topic into a SQL database table
+This python 3 script subscribes to MQTT broker topic and inserts the topic into a SQL database table
 
 # Content
 * [Installation](#installation)
 * [Usage](#usage)
-* [History data](#history-data)
+* [Store history data](#history-data)
 
 ## Installation
 ### Prerequisite
-* Paho MQTT, MySQLdb and/or sqlite3 python lib are neccessary. To install it to you python environment use
+This script runs under [Python 3.x](https://www.python.org/downloads/).
+
+**Note**: Due to the [Python 2.7 EOL](https://github.com/python/devguide/pull/344) in Jan 2020 Python 2.x is no longer supported.
+
+* To install Pip, Paho MQTT and MySQLdb lib to your python environment use
 ```
-sudo apt-get install python-pip python-mysqldb python-pysqlite2
-sudo pip install paho-mqtt configargparse
+sudo apt-get install python-pip3 python3-mysqldb
+pip3 install paho-mqtt configargparse
 ```
+* __Check__ that Python 3.x is installed e.g.
+```
+$ python3 --version
+Python 3.8.0
+```
+
 * __Check__ that pip installed __pao-mqtt greater or equal version 1.2.3__, e.g.
 ```
-$ sudo pip show paho-mqtt
+$ pip3 show paho-mqtt
 ...
 Name: paho-mqtt
-Version: 1.3.0
+Version: 1.5.0
 ...
 ```
 * Create database table using SQL command
@@ -97,9 +107,12 @@ Finally be sure the service is enabled:
 sudo systemctl enable mqtt2sql
 ```
 
-## History data
-If we need additonal history data we can use SQL trigger on the basic table `mqtt` 
-to record each inserted/updated record into a second history table `mqtt_history`.
+## Store history data
+If you need history data you can use SQL trigger on the basic table `mqtt` 
+to record each inserted/updated record into a extra history table `mqtt_history`.
+
+The two triggers `mqtt_after_insert` and `mqtt_after_update` will store each
+insert or update on table `mqtt` into history table `mqtt_history`
 
 ### Create MySQL history table and trigger
 
