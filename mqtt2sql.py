@@ -1,11 +1,11 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-VER = '1.5.0022'
+VER = '2.0.0024'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
 
-    Copyright (C) 2018 Norbert Richter <nr@prsolution.eu>
+    Copyright (C) 2019 Norbert Richter <nr@prsolution.eu>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -22,9 +22,9 @@ VER = '1.5.0022'
 
 
 Requirements:
-    Python and Paho MQTT, MySQLdb and/or sqlite3 python lib:
-    sudo apt-get install pyhton python-pip python-mysqldb python-pysqlite2
-    sudo pip install paho-mqtt configargparse
+    Python 3, Paho MQTT, MySQLdb:
+    sudo apt-get install python-pip3 python3-mysqldb
+    pip3 install paho-mqtt configargparse
 
 
 Usage:
@@ -35,7 +35,7 @@ Usage:
 import os, sys
 def ModuleImportError(module):
     er = str(module)
-    print("{}. Try 'pip install {}' to install".format(er,er.split(' ')[len(er.split(' '))-1]) )
+    print("{}. Try 'pip install {}' to install".format(er,er.split(' ')[len(er.split(' '))-1]))
     sys.exit(9)
 try:
     import imp
@@ -46,7 +46,7 @@ try:
     import configargparse
     from threading import Thread, BoundedSemaphore
     from random import random
-except ImportError, e:
+except ImportError as e:
     ModuleImportError(e)
 
 try:
@@ -131,7 +131,7 @@ def debuglog(dbglevel, msg):
     @param msg: message to output
     """
 
-    if args.debug>dbglevel:
+    if args.debug is not None and args.debug>dbglevel:
         log(msg)
 
 def write2sql(message):
@@ -163,19 +163,28 @@ def write2sql(message):
                 active = ', active=1'
             else:
                 active = ''
-            ts = datetime.datetime.fromtimestamp(int(message.timestamp)).strftime('%Y-%m-%d %H:%M:%S')
+            ts = datetime.datetime.fromtimestamp(int(time.time())).strftime('%Y-%m-%d %H:%M:%S')
+            payload = message.payload
+            if not isinstance(payload, str):
+                payload = str(payload, 'utf-8',errors='ignore')
             if args.sqltype=='mysql':
-                cursor.execute("INSERT INTO `{0}` SET `ts`='{1}',`topic`='{2}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6} ON DUPLICATE KEY UPDATE `ts`='{1}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6}".format(args.sqltable, ts, message.topic, message.payload, message.qos, message.retain, active))
+                sql="INSERT INTO `{0}` SET `ts`='{1}',`topic`='{2}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6} ON DUPLICATE KEY UPDATE `ts`='{1}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6}".format(args.sqltable, ts, message.topic, payload, message.qos, message.retain, active)
+                debuglog(4,"SQL exec: '{}'".format(sql))
+                cursor.execute(sql)
             elif args.sqltype=='sqlite':
                 # strtime=str(time.strftime("%Y-%m-%d %H:%M:%S"))
-                cursor.execute("INSERT OR IGNORE INTO `{0}` (ts,topic,value,qos,retain) VALUES('{1}','{2}','{3}','{4}','{5}')".format(args.sqltable, ts, message.topic, message.payload, message.qos, message.retain))
-                cursor.execute("UPDATE `{0}` SET ts='{1}', value='{3}', qos='{4}', retain='{5}' WHERE topic='{2}'".format(args.sqltable, ts, message.topic, message.payload, message.qos, message.retain))
+                sql1="INSERT OR IGNORE INTO `{0}` (ts,topic,value,qos,retain) VALUES('{1}','{2}','{3}','{4}','{5}')".format(args.sqltable, ts, message.topic, payload, message.qos, message.retain)
+                sql2="UPDATE `{0}` SET ts='{1}', value='{3}', qos='{4}', retain='{5}' WHERE topic='{2}'".format(args.sqltable, ts, message.topic, payload, message.qos, message.retain)
+                sql=sql1 + '\n' + sql2
+                debuglog(4,"SQL exec: '{}'".format(sql))
+                cursor.execute(sql1)
+                cursor.execute(sql2)
 
             db.commit()
-            debuglog(1,"SQL successful written: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(args.sqltable, message.topic, message.payload, message.qos, message.retain))
+            debuglog(1,"SQL successful written: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(args.sqltable, message.topic, payload, message.qos, message.retain))
             transactionretry = 0
 
-        except MySQLdb.Error, e:
+        except MySQLdb.Error as e:
             retry = args.sqltype=='mysql' and e.args[0] in [1040,1205,1213]
 
             if retry:
@@ -185,7 +194,8 @@ def write2sql(message):
                     transactiondelay *= 2
                 time.sleep(transactiondelay)
             else:
-                log("MySQL Error [{}]: {}".format(e.args[0], e.args[1]))
+                log("SQL Error [{}]: {}".format(e.args[0], e.args[1]))
+                log("SQL Exec: {}".format(sql))
                 # Rollback in case there is any error
                 db.rollback()
                 transactionretry = 0
@@ -244,7 +254,7 @@ def on_message(client, userdata, message):
         an instance of MQTTMessage.
         This is a class with members topic, payload, qos, retain.
     """
-    if args.verbose>0:
+    if args.verbose is not None and args.verbose>0:
         log('{} {} [QOS {} Retain {}]'.format(message.topic, message.payload, message.qos, message.retain))
 
     pool_sqlconnections.acquire()
@@ -386,7 +396,7 @@ if __name__ == "__main__":
     # Log program start
     log('{} v{} start'.format(scriptname, VER))
 
-    if args.verbose>0:
+    if args.verbose is not None and args.verbose>0:
         log('  MQTT server: {}:{} {}{} keepalive {}'.format(args.mqtthost, args.mqttport, 'SSL' if (args.mqttcafile is not None) else '', ' (suppress TLS verification)' if args.mqttinsecure else '', args.keepalive))
         log('  MQTT user:   {}'.format(args.mqttusername))
         log('  MQTT topics: {}'.format(args.mqtttopic))
@@ -394,9 +404,9 @@ if __name__ == "__main__":
         log('  SQL user:    {}'.format(args.sqlusername))
         if args.logfile is not None:
             log('  Log file:    {}'.format(args.logfile))
-        if args.debug > 0:
+        if args.debug is not None and args.debug > 0:
             log('  Debug level: {}'.format(args.debug))
-        if args.verbose > 0:
+        if args.verbose is not None and args.verbose > 0:
             log('  Verbose level: {}'.format(args.verbose))
 
     pool_sqlconnections = BoundedSemaphore(value=args.sqlmaxconnection)
@@ -407,7 +417,7 @@ if __name__ == "__main__":
         'starttime'    : time.time(),
     }
     mqttc = mqtt.Client('{}-{:d}'.format(scriptname, os.getpid()), clean_session=True, userdata=userdata)
-    if args.debug>0:
+    if args.debug is not None and args.debug>0:
         if args.debug==1:
             logging.basicConfig(level=logging.DEBUG)
         elif args.debug==2:
@@ -444,7 +454,7 @@ if __name__ == "__main__":
     try:
         rc=mqttc.connect(args.mqtthost, args.mqttport, args.keepalive)
         debuglog(1,"mqttc.connect() returns {}".format(rc))
-    except Exception, e:
+    except Exception as e:
         exit(3, 'Connection to {}:{} failed: {}'.format(args.mqtthost, args.mqttport, str(e)))
 
     while True:
@@ -453,7 +463,7 @@ if __name__ == "__main__":
         while userdata['haveresponse'] == False and rc == 0:
             try:
                 rc = mqttc.loop()
-            except Exception, e:
+            except Exception as e:
                 log('ERROR: loop() - {}'.format(e))
                 time.sleep(0.25)
 
@@ -463,5 +473,5 @@ if __name__ == "__main__":
             rc = mqttc.reconnect()
             debuglog(1,"mqttc.reconnect() returns {}".format(rc))
             log('MQTT reconnect')
-        except Exception, e:
+        except Exception as e:
             exit(3, 'Connection to {}:{} failed: {}'.format(args.mqtthost, args.mqttport, str(e)))
