@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-VER = '2.0.0024'
+VER = '2.0.0025'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -71,7 +71,7 @@ except ImportError:
 
 args = {}
 DEFAULTS = {
-     'DEFAULT': 
+     'DEFAULT':
         { 'configfile'  : None
          ,'logfile'     : None
          ,'debug'       : None
@@ -144,14 +144,14 @@ def write2sql(message):
         This is a class with members topic, payload, qos, retain.
     """
     db = None
-    
+
     debuglog(1,"SQL type is '{}'".format(args.sqltype))
     try:
         if args.sqltype=='mysql':
             db = MySQLdb.connect(args.sqlhost, args.sqlusername, args.sqlpassword, args.sqldb)
         elif args.sqltype=='sqlite':
             db = sqlite3.connect(args.sqldb)
-    except IndexError:
+    except IndexError as e:
         log("MySQL Error: {}".format(e))
 
     transactionretry = 10
@@ -205,7 +205,7 @@ def write2sql(message):
 
     db.close()
     pool_sqlconnections.release()
-    
+
 
 def on_connect(client, userdata, message, rc):
     """
@@ -363,7 +363,7 @@ if __name__ == "__main__":
     mqtt_group.add_argument('--keyfile',                    metavar='<keyfile>',        dest='mqttkeyfile',                 default=DEFAULTS['MQTT']['keyfile'],        help="keyfile (default {})".format(DEFAULTS['MQTT']['keyfile']) if module_ssl else configargparse.SUPPRESS)
     mqtt_group.add_argument('--insecure',                                               dest='mqttinsecure',action='store_true',default=DEFAULTS['MQTT']['insecure'],   help="suppress TLS verification (default {})".format(DEFAULTS['MQTT']['insecure']) if module_ssl else configargparse.SUPPRESS)
     mqtt_group.add_argument('--keepalive',                  metavar='<sec>',            dest='keepalive',   type=int,       default=DEFAULTS['MQTT']['keepalive'],      help="keepalive timeout for the client (default {})".format(DEFAULTS['MQTT']['keepalive']))
-    
+
     sql_group = parser.add_argument_group('SQL Options')
     sqltypes = []
     if module_MySQLdb:
