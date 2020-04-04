@@ -14,8 +14,7 @@ This script runs under [Python 3.x](https://www.python.org/downloads/).
 
 * To install Pip, Paho MQTT and MySQLdb lib to your python environment use
 ```
-sudo apt-get install python-pip3 python3-mysqldb
-pip3 install paho-mqtt configargparse
+sudo apt-get install python3-pip python3-mysqldb python3-configargparse python3-paho-mqtt
 ```
 * __Check__ that Python 3.x is installed e.g.
 ```
@@ -34,15 +33,15 @@ Version: 1.5.0
 * Create database table using SQL command
 #### MySQL
 ```
-CREATE TABLE `mqtt` (
-	`id`     SMALLINT(5) UNSIGNED NULL DEFAULT NULL,
+CREATE TABLE IF NOT EXISTS `mqtt` (
+	`id`     INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
 	`ts`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 	`active` TINYINT(4) NOT NULL DEFAULT '1',
 	`topic`  TEXT NOT NULL,
 	`value`  LONGTEXT NOT NULL,
 	`qos`    TINYINT(3) UNSIGNED NOT NULL DEFAULT '0',
 	`retain` TINYINT(3) UNSIGNED NOT NULL DEFAULT '0',
-	PRIMARY KEY (`topic`(1024)),
+	PRIMARY KEY (`topic`(255)),
 	INDEX `id` (`id`)
 )
 COLLATE='utf8_general_ci'
@@ -50,7 +49,7 @@ ENGINE=InnoDB;
 ```
 #### sqlite3
 ```
-CREATE TABLE `mqtt` (
+CREATE TABLE IF NOT EXISTS  `mqtt` (
 	`id`	 INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 	`ts`	 TEXT,
 	`active` INTEGER,
@@ -117,10 +116,10 @@ insert or update on table `mqtt` into history table `mqtt_history`
 ### Create MySQL history table and trigger
 
 ```
-CREATE TABLE `mqtt_history` (
+CREATE TABLE IF NOT EXISTS  `mqtt_history` (
 	`id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
 	`ts` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	`topic_id` SMALLINT(5) UNSIGNED NOT NULL,
+	`topicid` SMALLINT(5) UNSIGNED NOT NULL,
 	`value` LONGTEXT NOT NULL,
 	PRIMARY KEY (`id`),
 	INDEX `topicid` (`topicid`),
@@ -131,10 +130,10 @@ ENGINE=InnoDB;
 
 DELIMITER //
 CREATE TRIGGER `mqtt_after_insert` AFTER INSERT ON `mqtt` FOR EACH ROW BEGIN
-	INSERT INTO mqtt_history SET ts=NEW.ts, topic_id=NEW.id, value=NEW.value;
+	INSERT INTO mqtt_history SET ts=NEW.ts, topicid=NEW.id, value=NEW.value;
 END//
 CREATE TRIGGER `mqtt_after_update` AFTER UPDATE ON `mqtt` FOR EACH ROW BEGIN
-	INSERT INTO mqtt_history SET ts=NEW.ts, topic_id=NEW.id, value=NEW.value;
+	INSERT INTO mqtt_history SET ts=NEW.ts, topicid=NEW.id, value=NEW.value;
 END//
 DELIMITER ;
 ```
