@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS `mqtt` (
     `value` LONGTEXT NOT NULL,
     `qos` TINYINT(3) UNSIGNED NOT NULL DEFAULT '0',
     `retain` TINYINT(3) UNSIGNED NOT NULL DEFAULT '0',
+    `enable_history` tinyint(4) NOT NULL DEFAULT '1',
     PRIMARY KEY (`topic`(255)),
     INDEX `id` (`id`)
 )
@@ -158,10 +159,14 @@ ENGINE=InnoDB;
 
 DELIMITER //
 CREATE TRIGGER `mqtt_after_insert` AFTER INSERT ON `mqtt` FOR EACH ROW BEGIN
-    INSERT INTO mqtt_history SET ts=NEW.ts, topicid=NEW.id, value=NEW.value;
+    IF NEW.enable_history!=0 THEN
+        INSERT INTO mqtt_history SET ts=NEW.ts, topicid=NEW.id, value=NEW.value;
+    END IF;
 END//
 CREATE TRIGGER `mqtt_after_update` AFTER UPDATE ON `mqtt` FOR EACH ROW BEGIN
-    INSERT INTO mqtt_history SET ts=NEW.ts, topicid=NEW.id, value=NEW.value;
+    IF NEW.enable_history!=0 THEN
+        INSERT INTO mqtt_history SET ts=NEW.ts, topicid=NEW.id, value=NEW.value;
+    END IF;
 END//
 DELIMITER ;
 ```
