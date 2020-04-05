@@ -159,11 +159,15 @@ def write2sql(message):
     debuglog(1, "SQL type is '{}'".format(ARGS.sqltype))
     try:
         if ARGS.sqltype == 'mysql':
-            db_connection = MySQLdb.connect(ARGS.sqlhost, ARGS.sqlusername, ARGS.sqlpassword, ARGS.sqldb)
+            if ARGS.sqlusername is not None and ARGS.sqlpassword is not None:
+                db_connection = MySQLdb.connect(ARGS.sqlhost, ARGS.sqlusername, ARGS.sqlpassword, ARGS.sqldb)
+            else:
+                db_connection = MySQLdb.connect(ARGS.sqlhost)
         elif ARGS.sqltype == 'sqlite':
             db_connection = sqlite3.connect(ARGS.sqldb)
-    except IndexError as err:
+    except Exception as err:    # pylint: disable=broad-except
         log("MySQL Error: {}".format(err))
+        return
 
     transactionretry = 10
     while transactionretry > 0:
@@ -181,7 +185,7 @@ def write2sql(message):
             if ARGS.sqltype == 'mysql':
                 sql = "INSERT INTO `{0}` \
                        SET `ts`='{1}',`topic`='{2}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6} \
-                       ON DUPLICATE KEY UPDATE `timestamp`='{1}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6}"\
+                       ON DUPLICATE KEY UPDATE `ts`='{1}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6}"\
                     .format(
                         ARGS.sqltable,
                         timestamp,
@@ -230,7 +234,7 @@ def write2sql(message):
             transactionretry = 0
 
         except MySQLdb.Error as err:    # pylint: disable=no-member
-            retry = ARGS.sqltyp == 'mysql' and err.args[0] in [1040, 1205, 1213]
+            retry = ARGS.sqltype == 'mysql' and err.args[0] in [1040, 1205, 1213]
 
             if retry:
                 transactionretry -= 1
