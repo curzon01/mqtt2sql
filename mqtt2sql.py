@@ -23,12 +23,11 @@
 
 Requirements:
     Python 3, Paho MQTT, MySQLdb:
-    sudo apt-get install python-pip3 python3-mysqldb
-    pip3 install paho-mqtt configargparse
-
+    sudo apt-get install python3 python3-pip python3-mysqldb python3-configargparse python3-paho-mqtt
 
 Usage:
     See README.md for more details how to install and use
+    https://github.com/curzon01/mqtt2sql#mysql
 
 """
 
