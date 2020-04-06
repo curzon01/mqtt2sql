@@ -49,6 +49,16 @@ Version: 1.5.0
 ...
 ```
 
+### Copy the program
+
+Copy repository using git and make the program executable:
+
+```bash
+git clone https://github.com/curzon01/mqtt2sql
+cd mqtt2sql
+chmod +x mqtt2sql.py
+```
+
 ### Create database objects
 
 > the sql scripts we use here for MySQL and SQLite are creating all neccessary databases and objects. The default database is `mqtt` and the tables are `mqtt_history` with history data enabled. If you want to use different namings or existing databases, edit the top of the related *sql script before using it.
@@ -69,16 +79,6 @@ mysql --host localhost -u <username> -p < mysql.sql
 
 ```bash
 sqlite3 mqtt.db <sqlite.sql
-```
-
-### Copy the program
-
-Copy repository using git and make the program executable:
-
-```bash
-git clone https://github.com/curzon01/mqtt2sql
-cd mqtt2sql
-chmod +x mqtt2sql.py
 ```
 
 ## Usage
