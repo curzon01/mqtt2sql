@@ -27,7 +27,7 @@ Requirements:
 
 Usage:
     See README.md for more details how to install and use
-    https://github.com/curzon01/mqtt2sql#mysql
+    https://github.com/curzon01/mqtt2sql#mqtt2sql
 
 """
 
@@ -174,26 +174,21 @@ def write2sql(message):
         cursor = db_connection.cursor()
         try:
             # INSERT/UPDATE record
-            if message.payload != '':
-                active = ', active=1'
-            else:
-                active = ''
             timestamp = datetime.datetime.fromtimestamp(int(time.time())).strftime('%Y-%m-%d %H:%M:%S')
             payload = message.payload
             if not isinstance(payload, str):
                 payload = str(payload, 'utf-8', errors='ignore')
             if ARGS.sqltype == 'mysql':
                 sql = "INSERT INTO `{0}` \
-                       SET `ts`='{1}',`topic`='{2}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6} \
-                       ON DUPLICATE KEY UPDATE `ts`='{1}',`value`='{3}',`qos`='{4}',`retain`='{5}'{6}"\
+                       SET `ts`='{1}',`topic`='{2}',`value`='{3}',`qos`='{4}',`retain`='{5}' \
+                       ON DUPLICATE KEY UPDATE `ts`='{1}',`value`='{3}',`qos`='{4}',`retain`='{5}'"\
                     .format(
                         ARGS.sqltable,
                         timestamp,
                         message.topic,
                         payload,
                         message.qos,
-                        message.retain,
-                        active
+                        message.retain
                     )
                 debuglog(4, "SQL exec: '{}'".format(sql))
                 cursor.execute(sql)
