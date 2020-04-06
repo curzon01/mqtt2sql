@@ -1,7 +1,7 @@
 /*
     mysql.sql - mqtt2sql MySQL database objects
 
-    Copyright (C) 2019 Norbert Richter <nr@prsolution.eu>
+    Copyright (C) 2020 Norbert Richter <nr@prsolution.eu>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 
 Usage:
     See README.md for more details how to install and use
-    https://github.com/curzon01/mqtt2sql#mysql
+    https://github.com/curzon01/mqtt2sql#mqtt2sql
 */
 
 
