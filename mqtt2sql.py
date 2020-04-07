@@ -78,7 +78,7 @@ except ImportError:
     MODULE_SQLITE3 = False
 
 
-VER = '2.0.0026'
+VER = '2.0.0027'
 ARGS = {}
 DEFAULTS = {
     'DEFAULT': {
@@ -535,7 +535,7 @@ if __name__ == "__main__":
         dest='sqlmaxconnection',
         type=int,
         default=DEFAULTS['SQL']['sqlmaxconnection'],
-        help="maximum number of parallel connections (default {})".format(DEFAULTS['SQL']['sqlmaxconnection']))
+        help="maximum number of simultaneous connections (default {})".format(DEFAULTS['SQL']['sqlmaxconnection']))
 
     LOGGING_GROUP = PARSER.add_argument_group('Informational')
     LOGGING_GROUP.add_argument(
@@ -609,7 +609,7 @@ if __name__ == "__main__":
     if ARGS.mqttcafile is not None:
         if ARGS.mqttcertfile is not None:
             MQTTC.tls_set(
-                ARGS.mqttcafile,
+                ca_certs=ARGS.mqttcafile,
                 certfile=ARGS.mqttcertfile,
                 keyfile=ARGS.mqttkeyfile,
                 cert_reqs=ssl.CERT_REQUIRED
