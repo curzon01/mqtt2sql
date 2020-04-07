@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
+VER = '2.0.0027'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -31,9 +32,6 @@ Usage:
 
 """
 
-import os
-import sys
-
 def module_import_error(module):
     """
     Print suggestion for import failures
@@ -45,6 +43,9 @@ def module_import_error(module):
     print("{}. Try 'pip install {}' to install".format(err_str, err_str.split(' ')[len(err_str.split(' '))-1]))
     sys.exit(9)
 
+# pylint: disable=wrong-import-position
+import os
+import sys
 try:
     import imp
     import paho.mqtt.client as mqtt
@@ -76,9 +77,9 @@ try:
     MODULE_SQLITE3 = True
 except ImportError:
     MODULE_SQLITE3 = False
+# pylint: enable=wrong-import-position
 
 
-VER = '2.0.0027'
 ARGS = {}
 DEFAULTS = {
     'DEFAULT': {
