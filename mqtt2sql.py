@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.0.0028'
+VER = '2.0.0029'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -298,24 +298,9 @@ def on_connect(client, userdata, message, return_code):
     @param return_code:
         the connection result
     """
-
-    if return_code == mqtt.CONNACK_ACCEPTED:
-        errtext = "Connection successful"
-    elif return_code == mqtt.CONNACK_REFUSED_PROTOCOL_VERSION:
-        errtext = "Connection refused: Unacceptable protocol version"
-    elif return_code == mqtt.CONNACK_REFUSED_IDENTIFIER_REJECTED:
-        errtext = "Connection refused: Identifier rejected"
-    elif return_code == mqtt.CONNACK_REFUSED_SERVER_UNAVAILABLE:
-        errtext = "Connection refused: Server unavailable"
-    elif return_code == mqtt.CONNACK_REFUSED_BAD_USERNAME_PASSWORD:
-        errtext = "Connection refused: Bad user name or password"
-    elif return_code == mqtt.CONNACK_REFUSED_NOT_AUTHORIZED:
-        errtext = "Connection refused: Not authorized"
-    elif return_code > mqtt.CONNACK_REFUSED_NOT_AUTHORIZED:
-        errtext = "Connection refused: Unknown reason"
-    debuglog(2, "MQTT on_connect({},{},{},{}): {}".format(client, userdata, message, return_code, errtext))
+    debuglog(1, "MQTT on_connect({},{},{},{}): {}".format(client, userdata, message, return_code, mqtt.error_string(return_code)))
     for topic in ARGS.mqtttopic:
-        debuglog(1, "subscribing to topic {}".format(topic))
+        debuglog(1, "subscribe to topic {}".format(topic))
         client.subscribe(topic, 0)
 
 
