@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.0.0027'
+VER = '2.0.0028'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -31,6 +31,15 @@ Usage:
     https://github.com/curzon01/mqtt2sql#mqtt2sql
 
 """
+
+class ExitCode:
+    """
+    Program return codes
+    """
+    OK = 0
+    MISSING_MODULE = 1
+    MQTT_CONNECTION_ERROR = 2
+    SQL_CONNECTION_ERROR = 3
 
 def module_import_error(module):
     """
@@ -79,7 +88,8 @@ except ImportError:
     MODULE_SQLITE3 = False
 # pylint: enable=wrong-import-position
 
-
+EXIT_CODE = ExitCode.OK
+SQLTYPES = {'mysql':'MySQl', 'sqlite':'SQLite'} 
 ARGS = {}
 DEFAULTS = {
     'DEFAULT': {
@@ -155,9 +165,37 @@ def write2sql(message):
         an instance of MQTTMessage.
         This is a class with members topic, payload, qos, retain.
     """
+    def sql_execute_exception(retry_condition, error_str):
+        """
+        handling local SQL exceptions
+
+        @param retry_condition:
+            condition for retry transaction
+            if True delay process and return
+            if False rollback transaction and return
+        @param error_str:
+            error string to output
+        """
+        nonlocal db_connection, sql, transactionretry
+
+        typestr = SQLTYPES[ARGS.sqltype]
+
+        debuglog(1, "{} ERROR: {}".format(typestr, error_str))
+        if retry_condition:
+            transactionretry -= 1
+            transactiondelay = random()
+            transactiondelay *= 2
+            time.sleep(transactiondelay)
+        else:
+            log("{} ERROR {}".format(typestr, error_str))
+            log("{} statement: {}".format(typestr, sql))
+            # Rollback in case there is any error
+            db_connection.rollback()
+            transactionretry = 0
+
     db_connection = None
 
-    debuglog(1, "SQL type is '{}'".format(ARGS.sqltype))
+    debuglog(1, "SQL type is '{}'".format(SQLTYPES[ARGS.sqltype]))
     try:
         if ARGS.sqltype == 'mysql':
             if ARGS.sqlusername is not None and ARGS.sqlpassword is not None:
@@ -167,15 +205,14 @@ def write2sql(message):
         elif ARGS.sqltype == 'sqlite':
             db_connection = sqlite3.connect(ARGS.sqldb)
     except Exception as err:    # pylint: disable=broad-except
-        log("MySQL Error: {}".format(err))
-        return
+        exit_(ExitCode.SQL_CONNECTION_ERROR, "SQL conncetion error: {}".format(err))
 
     transactionretry = 10
     while transactionretry > 0:
         cursor = db_connection.cursor()
         try:
             # INSERT/UPDATE record
-            timestamp = datetime.datetime.fromtimestamp(int(time.time())).strftime('%Y-%m-%d %H:%M:%S')
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             payload = message.payload
             if not isinstance(payload, str):
                 payload = str(payload, 'utf-8', errors='ignore')
@@ -230,20 +267,16 @@ def write2sql(message):
             transactionretry = 0
 
         except MySQLdb.Error as err:    # pylint: disable=no-member
-            retry = ARGS.sqltype == 'mysql' and err.args[0] in [1040, 1205, 1213]
+            sql_execute_exception(
+                err.args[0] in [1040, 1205, 1213],
+                "[{}]: {}".format(err.args[0], err.args[1])
+                )
 
-            if retry:
-                transactionretry -= 1
-                transactiondelay = random()
-                if ARGS.sqltype == 'mysql' and err.args[0] in [1040]:
-                    transactiondelay *= 2
-                time.sleep(transactiondelay)
-            else:
-                log("SQL Error [{}]: {}".format(err.args[0], err.args[1]))
-                log("SQL Exec: {}".format(sql))
-                # Rollback in case there is any error
-                db_connection.rollback()
-                transactionretry = 0
+        except sqlite3.Error as err:
+            sql_execute_exception(
+                "database is locked" in str(err).lower(),
+                err
+                )
 
         finally:
             cursor.close()
@@ -299,6 +332,8 @@ def on_message(client, userdata, message):
         an instance of MQTTMessage.
         This is a class with members topic, payload, qos, retain.
     """
+    if EXIT_CODE != ExitCode.OK:
+        sys.exit(EXIT_CODE)
     if ARGS.verbose is not None and ARGS.verbose > 0:
         log('{} {} [QOS {} Retain {}]'.format(message.topic, message.payload, message.qos, message.retain))
 
@@ -370,8 +405,10 @@ def exit_(status=0, message="end"):
     @param message:
         the message logged before exit
     """
+    global EXIT_CODE    # pylint: disable=global-statement
 
     log(message)
+    EXIT_CODE = status
     sys.exit(status)
 
 
@@ -478,21 +515,21 @@ if __name__ == "__main__":
         help="keepalive timeout for the client (default {})".format(DEFAULTS['MQTT']['keepalive']))
 
     SQL_GROUP = PARSER.add_argument_group('SQL Options')
-    SQLTYPES = []
+    SQL_CHOICES = []
     if MODULE_MYSQLDB:
-        SQLTYPES.append('mysql')
+        SQL_CHOICES.append('mysql')
     if MODULE_SQLITE3:
-        SQLTYPES.append('sqlite')
-    if len(SQLTYPES) == 0:
-        exit_(3, 'Either module MySQLdb or sqlite must be installed')
+        SQL_CHOICES.append('sqlite')
+    if len(SQL_CHOICES) == 0:
+        exit_(ExitCode.MISSING_MODULE, 'Either module MySQLdb or sqlite must be installed')
 
     SQL_GROUP.add_argument(
         '--sqltype',
         metavar='<type>',
         dest='sqltype',
-        choices=SQLTYPES,
+        choices=SQL_CHOICES,
         default=DEFAULTS['SQL']['type'],
-        help="server type {} (default '{}')".format(SQLTYPES, DEFAULTS['SQL']['type']))
+        help="server type {} (default '{}')".format(SQL_CHOICES, DEFAULTS['SQL']['type']))
     SQL_GROUP.add_argument(
         '--sqlhost',
         metavar='<host>',
@@ -570,10 +607,13 @@ if __name__ == "__main__":
 
     if ARGS.verbose is not None and ARGS.verbose > 0:
         log('  MQTT server: {}:{} {}{} keepalive {}'.format(ARGS.mqtthost, ARGS.mqttport, 'SSL' if (ARGS.mqttcafile is not None) else '', ' (suppress TLS verification)' if ARGS.mqttinsecure else '', ARGS.keepalive))
-        log('  MQTT user:   {}'.format(ARGS.mqttusername))
-        log('  MQTT topics: {}'.format(ARGS.mqtttopic))
-        log('  SQL server:  {}:{}, type \'{}\', db \'{}\', table \'{}\' ({})'.format(ARGS.sqlhost, ARGS.sqlport, ARGS.sqltype, ARGS.sqldb, ARGS.sqltable, ARGS.sqlmaxconnection))
-        log('  SQL user:    {}'.format(ARGS.sqlusername))
+        log('       user:   {}'.format(ARGS.mqttusername))
+        log('       topics: {}'.format(ARGS.mqtttopic))
+        log('  SQL  type:   {}'.format(SQLTYPES[ARGS.sqltype]))
+        log('       server: {}:{} [max {} connections]'.format(ARGS.sqlhost, ARGS.sqlport, ARGS.sqlmaxconnection))
+        log('       db:     {}'.format(ARGS.sqldb))
+        log('       table:  {}'.format(ARGS.sqltable))
+        log('       user:   {}'.format(ARGS.sqlusername))
         if ARGS.logfile is not None:
             log('  Log file:    {}'.format(ARGS.logfile))
         if ARGS.debug is not None and ARGS.debug > 0:
@@ -624,12 +664,12 @@ if __name__ == "__main__":
         MQTTC.username_pw_set(ARGS.mqttusername, ARGS.mqttpassword)
 
     # Attempt to connect to broker. If this fails, issue CRITICAL
-    debuglog(1, "MQTTC.connect({}, {}, 60)".format(ARGS.mqtthost, ARGS.mqttport))
+    debuglog(1, "MQTTC.connect({}, {}, {})".format(ARGS.mqtthost, ARGS.mqttport, ARGS.keepalive))
     try:
         RETURN_CODE = MQTTC.connect(ARGS.mqtthost, ARGS.mqttport, ARGS.keepalive)
         debuglog(1, "MQTTC.connect() returns {}".format(RETURN_CODE))
     except Exception as err:    # pylint: disable=broad-except
-        exit_(3, '{}:{} failed: {}'.format(ARGS.mqtthost, ARGS.mqttport, mqtt.error_string(err)))
+        exit_(ExitCode.MQTT_CONNECTION_ERROR, '{}:{} failed - [{}] {} - "{}"'.format(ARGS.mqtthost, ARGS.mqttport, RETURN_CODE, mqtt.error_string(RETURN_CODE), err))
 
     while True:
         # Main loop as long as no error occurs
@@ -640,6 +680,8 @@ if __name__ == "__main__":
             except Exception as err:    # pylint: disable=broad-except
                 log('ERROR: loop() - {}'.format(err))
                 time.sleep(0.25)
+            if EXIT_CODE != ExitCode.OK:
+                sys.exit(EXIT_CODE)
         if RETURN_CODE not in (
                 mqtt.MQTT_ERR_AGAIN,
                 mqtt.MQTT_ERR_PROTOCOL,
@@ -653,12 +695,11 @@ if __name__ == "__main__":
                 mqtt.MQTT_ERR_AUTH,
                 mqtt.MQTT_ERR_ERRNO):
             # disconnect from server
-            log('MQTT disconnected (exit code {})'.format(RETURN_CODE))
+            log('MQTT disconnected - [{}] {})'.format(RETURN_CODE, mqtt.error_string(RETURN_CODE)))
             try:
                 RETURN_CODE = MQTTC.reconnect()
-                debuglog(1, "MQTTC.reconnect() returns {}".format(RETURN_CODE))
-                log('MQTT reconnect')
+                log('MQTT reconnected - [{}] {})'.format(RETURN_CODE, mqtt.error_string(RETURN_CODE)))
             except Exception as err:    # pylint: disable=broad-except
-                exit_(3, '{}:{} failed: {}'.format(ARGS.mqtthost, ARGS.mqttport, mqtt.error_string(err)))
+                exit_(ExitCode.MQTT_CONNECTION_ERROR, '{}:{} failed - [{}] {}'.format(ARGS.mqtthost, ARGS.mqttport, RETURN_CODE, mqtt.error_string(err)))
         else:
-            exit_(3, '{}:{} failed: {}'.format(ARGS.mqtthost, ARGS.mqttport, mqtt.error_string(RETURN_CODE)))
+            exit_(ExitCode.MQTT_CONNECTION_ERROR, '{}:{} failed: - [{}] {}'.format(ARGS.mqtthost, ARGS.mqttport, RETURN_CODE, mqtt.error_string(RETURN_CODE)))
