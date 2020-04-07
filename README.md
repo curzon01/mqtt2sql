@@ -115,6 +115,17 @@ If you got a help page, you can start try to run it using one of the existing da
 
 ### Start as systemd manager daemon
 
+The program allows the entire program parameters to be transferred in a configuration file instead of as individual program parameters.  
+For the following service file we use a copy of the configuration file [mqtt2sql.conf](https://github.com/curzon01/mqtt2sql/blob/master/mqtt2sql.conf) for parameterization and chnage it to our needs. This means that we do not have to edit the service file in the case of changes.
+
+Make a copy of the configuration file and edit the parameter
+
+```bash
+sudo mkdir -p /usr/local/etc/
+sudo cp mqtt2sql.conf /usr/local/etc/
+sudo nano /usr/local/etc/mqtt2sql.conf
+```
+
 Create mqtt2sql.service
 
 ```bash
@@ -131,10 +142,7 @@ After=local-fs.target network.target mysql.service
 Type=simple
 Restart=always
 RestartSec=10
-# MySql example
-ExecStart=/usr/local/bin/mqtt2sql.py --mqtthost mqtt.myhome.local --mqttusername mqttuser --mqttpassword mqttpasswd --topic 'myhome/#' --sqlhost localhost --sqlusername sqluser --sqlpassword 'sqlpasswd' --sqldb mqtt --logfile /var/log/mqtt.log
-# SQLite3 example
-# ExecStart=/usr/local/bin/mqtt2sql.py --mqtthost mqtt.myhome.local --mqttusername mqttuser --mqttpassword mqttpasswd --topic 'myhome/#' --sqltype sqlite --sqldb /var/lib/mqtt.db --logfile /var/log/mqtt.log
+ExecStart=/usr/local/bin/mqtt2sql.py --configfile /usr/local/etc/mqtt2sql.conf
 
 [Install]
 WantedBy=multi-user.target
