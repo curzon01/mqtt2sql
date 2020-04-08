@@ -176,25 +176,26 @@ def write2sql(message):
         @param error_str:
             error string to output
         """
-        nonlocal db_connection, sql, transactionretry
+        nonlocal db_connection, sql, transaction_retry
 
         typestr = SQLTYPES[ARGS.sqltype]
 
         debuglog(1, "{} ERROR: {}".format(typestr, error_str))
         if retry_condition:
-            transactionretry -= 1
-            transactiondelay = random()
-            transactiondelay *= 2
-            time.sleep(transactiondelay)
+            transaction_retry -= 1
+            transaction_delay = random()
+            transaction_delay *= 2
+            time.sleep(transaction_delay)
         else:
             log("{} ERROR {}".format(typestr, error_str))
             log("{} statement: {}".format(typestr, sql))
             # Rollback in case there is any error
             db_connection.rollback()
-            transactionretry = 0
+            transaction_retry = 0
 
     db_connection = None
-
+    connection_retry = 10
+    connection_delay = 1
     debuglog(1, "SQL type is '{}'".format(SQLTYPES[ARGS.sqltype]))
     try:
         if ARGS.sqltype == 'mysql':
@@ -205,10 +206,17 @@ def write2sql(message):
         elif ARGS.sqltype == 'sqlite':
             db_connection = sqlite3.connect(ARGS.sqldb)
     except Exception as err:    # pylint: disable=broad-except
-        exit_(ExitCode.SQL_CONNECTION_ERROR, "SQL conncetion error: {}".format(err))
+        connection_retry -= 1
+        debuglog(1, "SQL connection error: {}, connection_retry={}, connection_delay={}".format(SQLTYPES[ARGS.sqltype], connection_retry, connection_delay))
+        if connection_retry > 0:
+            log("SQL connection error: {} - try retry".format(err))
+            time.sleep(connection_delay)
+            connection_delay += 1
+        else:
+            exit_(ExitCode.SQL_CONNECTION_ERROR, "SQL connection error: {} - give up".format(err))
 
-    transactionretry = 10
-    while transactionretry > 0:
+    transaction_retry = 10
+    while transaction_retry > 0:
         cursor = db_connection.cursor()
         try:
             # INSERT/UPDATE record
@@ -264,7 +272,7 @@ def write2sql(message):
 
             db_connection.commit()
             debuglog(1, "SQL successful written: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(ARGS.sqltable, message.topic, payload, message.qos, message.retain))
-            transactionretry = 0
+            transaction_retry = 0
 
         except MySQLdb.Error as err:    # pylint: disable=no-member
             sql_execute_exception(
