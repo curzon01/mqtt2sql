@@ -98,9 +98,9 @@ If you got a help page, you can start try to run it using one of the existing da
 > Change parameter (e.g. mqtthost, sqlhost) to your needs
 
 ```bash
-./mqtt2sql.py --mqtthost localhost --mqttusername mqttuser --mqttpassword 'mqttpasswd' \
---topic 'mytopic/#' \
---sqlhost localhost --sqlusername sqluser --sqlpassword 'sqlpasswd' --sqldb mqtt -v
+./mqtt2sql.py --mqtt-host localhost --mqtt-username mqttuser --mqtt-password 'mqttpasswd' \
+--mqtt-topic 'mytopic/#' \
+--sql-type mysql --sql-host localhost --sql-username sqluser --sql-password 'sqlpasswd' --sql-db mqtt -v
 ```
 
 #### Run program using SQLite3
@@ -108,9 +108,9 @@ If you got a help page, you can start try to run it using one of the existing da
 > Change parameter (e.g. mqtthost) to your needs
 
 ```bash
-./mqtt2sql.py --mqtthost localhost --mqttusername mqttuser --mqttpassword 'mqttpasswd' \
---topic 'mytopic/#' \
---sqltype sqlite --sqldb mqtt.db --sqldb mqtt -v
+./mqtt2sql.py --mqtt-host localhost --mqtt-username mqttuser --mqtt-password 'mqttpasswd' \
+--mqtt-topic 'mytopic/#' \
+--sql-type sqlite --sql-db mqtt.db -v
 ```
 
 ### Start as systemd manager daemon
