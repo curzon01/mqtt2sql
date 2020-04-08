@@ -100,7 +100,7 @@ If you got a help page, you can start try to run it using one of the existing da
 ```bash
 ./mqtt2sql.py --mqtthost localhost --mqttusername mqttuser --mqttpassword 'mqttpasswd' \
 --topic 'mytopic/#' \
---sqlhost localhost --sqlusername sqluser --sqlpassword 'sqlpasswd' --sqldb mqtt -v
+--sqlhost localhost --sqlusername sqluser --sqlpassword 'sqlpasswd' --sqldb mqtt --sqltable mqtt -v
 ```
 
 #### Run program using SQLite3
@@ -110,7 +110,7 @@ If you got a help page, you can start try to run it using one of the existing da
 ```bash
 ./mqtt2sql.py --mqtthost localhost --mqttusername mqttuser --mqttpassword 'mqttpasswd' \
 --topic 'mytopic/#' \
---sqltype sqlite --sqldb mqtt.db --sqldb mqtt -v
+--sqltype sqlite --sqldb mqtt.db --sqltable mqtt -v
 ```
 
 ### Start as systemd manager daemon
@@ -132,7 +132,7 @@ Create mqtt2sql.service
 sudo nano /etc/systemd/system/mqtt2sql.service
 ```
 
-Insert the following lines - note: replace example usernames and passwords with yours
+Insert the following lines
 
 ```conf
 Description=MQTT2SQL
