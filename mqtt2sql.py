@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.1.0030'
+VER = '2.1.0031'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -63,6 +63,7 @@ try:
     import signal
     import logging
     import configargparse
+    import threading
     from threading import Thread, BoundedSemaphore
     from random import random
 except ImportError as err:
@@ -115,9 +116,11 @@ DEFAULTS = {
     'sql-password': None,
     'sql-db': None,
     'sql-table': 'mqtt',
-    'sql-max-connection': 50
+    'sql-max-connection': 50,
+    'sql-connection-retry': 10,
+    'sql-connection-retry-start-delay': 1,
+    'sql-transaction-retry': 10
 }
-
 
 def log(msg):
     """
@@ -176,47 +179,61 @@ def write2sql(message):
 
         typestr = SQLTYPES[ARGS.sql_type]
 
-        debuglog(1, "{} ERROR: {}".format(typestr, error_str))
+        transaction_delay = random()
+        transaction_delay *= 2
+        debuglog(1, "[{}]: {} transaction ERROR: {}, retry={}, delay={}".format(threading.get_ident(), typestr, error_str, transaction_retry, transaction_delay))
         if retry_condition:
             transaction_retry -= 1
-            transaction_delay = random()
-            transaction_delay *= 2
+            log("SQL transaction ERROR: {} - try retry".format(err))
             time.sleep(transaction_delay)
         else:
-            log("{} ERROR {}".format(typestr, error_str))
-            log("{} statement: {}".format(typestr, sql))
+            log("{} transaction ERROR {}".format(typestr, error_str))
+            log("{} give up: {}".format(typestr, sql))
             # Rollback in case there is any error
             db_connection.rollback()
             transaction_retry = 0
 
-    db_connection = None
-    connection_retry = 10
-    connection_delay = 1
-    debuglog(1, "SQL type is '{}'".format(SQLTYPES[ARGS.sql_type]))
-    try:
-        if ARGS.sql_type == 'mysql':
-            if ARGS.sql_username is not None and ARGS.sql_password is not None:
-                db_connection = MySQLdb.connect(ARGS.sql_host, ARGS.sql_username, ARGS.sql_password, ARGS.sql_db)
-            else:
-                db_connection = MySQLdb.connect(ARGS.sql_host)
-        elif ARGS.sql_type == 'sqlite':
-            db_connection = sqlite3.connect(ARGS.sql_db)
-    except Exception as err:    # pylint: disable=broad-except
-        connection_retry -= 1
-        debuglog(1, "SQL connection error: {}, connection_retry={}, connection_delay={}".format(SQLTYPES[ARGS.sql_type], connection_retry, connection_delay))
-        if connection_retry > 0:
-            log("SQL connection error: {} - try retry".format(err))
-            time.sleep(connection_delay)
-            connection_delay += 1
-        else:
-            exit_(ExitCode.SQL_CONNECTION_ERROR, "SQL connection error: {} - give up".format(err))
+    global EXIT_CODE    # pylint: disable=global-statement
+    if EXIT_CODE != ExitCode.OK:
+        sys.exit(0)
 
-    transaction_retry = 10
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    connection_retry = ARGS.sql_connection_retry
+    connection_delay = ARGS.sql_connection_retry_start_delay
+    connection_delay_base = ARGS.sql_connection_retry_start_delay
+    debuglog(3, "SQL type is '{}'".format(SQLTYPES[ARGS.sql_type]))
+    db_connection = None
+    while connection_retry > 0:
+        if EXIT_CODE != ExitCode.OK:
+            sys.exit(0)
+        try:
+            if ARGS.sql_type == 'mysql':
+                if ARGS.sql_username is not None and ARGS.sql_password is not None:
+                    db_connection = MySQLdb.connect(ARGS.sql_host, ARGS.sql_username, ARGS.sql_password, ARGS.sql_db)
+                else:
+                    db_connection = MySQLdb.connect(ARGS.sql_host)
+            elif ARGS.sql_type == 'sqlite':
+                db_connection = sqlite3.connect(ARGS.sql_db)
+            connection_retry = 0
+
+        except Exception as err:    # pylint: disable=broad-except
+            connection_retry -= 1
+            debuglog(1, "[{}]: SQL connection ERROR: {}, retry={}, delay={}".format(threading.get_ident(), SQLTYPES[ARGS.sql_type], connection_retry, connection_delay))
+            if connection_retry > 0:
+                log("SQL connection ERROR: {} - try retry".format(err))
+                time.sleep(connection_delay)
+                connection_delay += connection_delay_base
+            else:
+                os.kill(os.getpid(), signal.SIGTERM)
+                exit_(ExitCode.SQL_CONNECTION_ERROR, "SQL connection ERROR: {} - give up".format(err))
+
+    transaction_retry = ARGS.sql_transaction_retry
     while transaction_retry > 0:
+        if EXIT_CODE != ExitCode.OK:
+            sys.exit(0)
         cursor = db_connection.cursor()
         try:
             # INSERT/UPDATE record
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             payload = message.payload
             if not isinstance(payload, str):
                 payload = str(payload, 'utf-8', errors='ignore')
@@ -267,7 +284,7 @@ def write2sql(message):
                 cursor.execute(sql2)
 
             db_connection.commit()
-            debuglog(1, "SQL successful written: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(ARGS.sql_table, message.topic, payload, message.qos, message.retain))
+            debuglog(1, "[{}]: SQL success: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(threading.get_ident(), ARGS.sql_table, message.topic, payload, message.qos, message.retain))
             transaction_retry = 0
 
         except MySQLdb.Error as err:    # pylint: disable=no-member
@@ -307,7 +324,6 @@ def on_connect(client, userdata, message, return_code):
         debuglog(1, "subscribe to topic {}".format(topic))
         client.subscribe(topic, 0)
 
-
 def on_message(client, userdata, message):
     """
     Called when a message has been received on a topic that the client subscribes to.
@@ -329,7 +345,6 @@ def on_message(client, userdata, message):
     debuglog(2, "on_message({},{},{})".format(client, userdata, message))
     POOL_SQLCONNECTIONS.acquire()
     Thread(target=write2sql, args=(message,)).start()
-
 
 def on_publish(client, userdata, mid):
     """
@@ -400,7 +415,6 @@ def exit_(status=0, message="end"):
     EXIT_CODE = status
     sys.exit(status)
 
-
 class SignalHandler:
     """
     Signal Handler Class
@@ -415,7 +429,6 @@ class SignalHandler:
         """
         debuglog(2, "SignalHandler.exitus({},{})".format(signal_, frame_))
         exit_(signal, '{} v{} end - signal {}'.format(SCRIPTNAME, VER, signal_))
-
 
 if __name__ == "__main__":
     # set signal handler
@@ -452,7 +465,7 @@ if __name__ == "__main__":
         default=DEFAULTS['mqtt-port'],
         help="port to connect to (default {})".format(DEFAULTS['mqtt-port'])
     )
-    MQTT_GROUP.add_argument('--mqttport', '--port', dest='mqtt_port', help=configargparse.SUPPRESS)
+    MQTT_GROUP.add_argument('--mqttport', '--port', dest='mqtt_port', type=int, help=configargparse.SUPPRESS)
     MQTT_GROUP.add_argument(
         '--mqtt-username',
         metavar='<username>',
@@ -475,7 +488,7 @@ if __name__ == "__main__":
         nargs='*',
         default=DEFAULTS['mqtt-topic'],
         help="topic to use (default {})".format(DEFAULTS['mqtt-topic']))
-    MQTT_GROUP.add_argument('--topic', dest='mqtt_topic', help=configargparse.SUPPRESS)
+    MQTT_GROUP.add_argument('--topic', dest='mqtt_topic', nargs='*', help=configargparse.SUPPRESS)
     MQTT_GROUP.add_argument(
         '--mqtt-cafile',
         metavar='<cafile>',
@@ -511,7 +524,7 @@ if __name__ == "__main__":
         type=int,
         default=DEFAULTS['mqtt-keepalive'],
         help="keepalive timeout for the client (default {})".format(DEFAULTS['mqtt-keepalive']))
-    MQTT_GROUP.add_argument('--keepalive', dest='mqtt_keepalive', help=configargparse.SUPPRESS)
+    MQTT_GROUP.add_argument('--keepalive', dest='mqtt_keepalive', type=int, help=configargparse.SUPPRESS)
 
     SQL_GROUP = PARSER.add_argument_group('SQL Options')
     SQL_CHOICES = []
@@ -529,7 +542,7 @@ if __name__ == "__main__":
         choices=SQL_CHOICES,
         default=DEFAULTS['sql-type'],
         help="server type {} (default '{}')".format(SQL_CHOICES, DEFAULTS['sql-type']))
-    SQL_GROUP.add_argument('--sqltype', dest='sql_type', help=configargparse.SUPPRESS)
+    SQL_GROUP.add_argument('--sqltype', dest='sql_type', choices=SQL_CHOICES, help=configargparse.SUPPRESS)
     SQL_GROUP.add_argument(
         '--sql-host',
         metavar='<host>',
@@ -544,7 +557,7 @@ if __name__ == "__main__":
         type=int,
         default=DEFAULTS['sql-port'],
         help="port to connect (default {})".format(DEFAULTS['sql-port']))
-    SQL_GROUP.add_argument('--sqlport', dest='sql_port', help=configargparse.SUPPRESS)
+    SQL_GROUP.add_argument('--sqlport', dest='sql_port', type=int, help=configargparse.SUPPRESS)
     SQL_GROUP.add_argument(
         '--sql-username',
         metavar='<username>',
@@ -580,7 +593,28 @@ if __name__ == "__main__":
         type=int,
         default=DEFAULTS['sql-max-connection'],
         help="maximum number of simultaneous connections (default {})".format(DEFAULTS['sql-max-connection']))
-    SQL_GROUP.add_argument('--sqlmaxconnection', dest='sql_max_connection', help=configargparse.SUPPRESS)
+    SQL_GROUP.add_argument('--sqlmaxconnection', dest='sql_max_connection', type=int, help=configargparse.SUPPRESS)
+    SQL_GROUP.add_argument(
+        '--sql-connection-retry',
+        metavar='<num>',
+        dest='sql_connection_retry',
+        type=int,
+        default=DEFAULTS['sql-connection-retry'],
+        help="maximum number of SQL connection retries on error (default {})".format(DEFAULTS['sql-connection-retry']))
+    SQL_GROUP.add_argument(
+        '--sql-connection-retry-start-delay',
+        metavar='<sec>',
+        dest='sql_connection_retry_start_delay',
+        type=float,
+        default=DEFAULTS['sql-connection-retry-start-delay'],
+        help="start delay between SQL reconnect retry (default {}), is doubled after each occurrence".format(DEFAULTS['sql-connection-retry-start-delay']))
+    SQL_GROUP.add_argument(
+        '--sql-transaction-retry',
+        metavar='<num>',
+        dest='sql_transaction_retry',
+        type=int,
+        default=DEFAULTS['sql-transaction-retry'],
+        help="maximum number of SQL transaction retry on error (default {})".format(DEFAULTS['sql-transaction-retry']))
 
     LOGGING_GROUP = PARSER.add_argument_group('Informational')
     LOGGING_GROUP.add_argument(
@@ -638,11 +672,11 @@ if __name__ == "__main__":
     MQTTC = mqtt.Client('{}-{:d}'.format(SCRIPTNAME, os.getpid()), clean_session=True, userdata=USERDATA)
     if ARGS.debug is not None and ARGS.debug > 0:
         if ARGS.debug == 1:
-            logging.basicConfig(level=logging.DEBUG)
+            logging.basicConfig(level=logging.INFO)
         elif ARGS.debug == 2:
             logging.basicConfig(level=logging.WARNING)
         elif ARGS.debug == 3:
-            logging.basicConfig(level=logging.INFO)
+            logging.basicConfig(level=logging.DEBUG)
         elif ARGS.debug >= 4:
             logging.basicConfig(level=logging.DEBUG)
         LOGGER = logging.getLogger(__name__)
@@ -672,6 +706,7 @@ if __name__ == "__main__":
 
     # Attempt to connect to broker. If this fails, issue CRITICAL
     debuglog(1, "MQTTC.connect({}, {}, {})".format(ARGS.mqtt_host, ARGS.mqtt_port, ARGS.mqtt_keepalive))
+    RETURN_CODE = mqtt.MQTT_ERR_UNKNOWN
     try:
         RETURN_CODE = MQTTC.connect(ARGS.mqtt_host, ARGS.mqtt_port, ARGS.mqtt_keepalive)
         debuglog(1, "MQTTC.connect() returns {}".format(RETURN_CODE))
