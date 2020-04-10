@@ -2,6 +2,14 @@
 
 This python 3 program creates copies of MQTT broker data into a SQL database (currently supports MySQL5.x/MariaDB 10.x and SQLite 3).
 
+[![master](https://img.shields.io/badge/master-v2.1.31-blue.svg)](https://github.com/curzon01/mqtt2sql/tree/master)
+[![License](https://img.shields.io/github/license/curzon01/mqtt2sql.svg)](LICENSE)
+
+If you like **mqtt2sql** give it a star or fork it:
+
+[![GitHub stars](https://img.shields.io/github/stars/curzon01/mqtt2sql.svg?style=social&label=Star)](https://github.com/curzon01/mqtt2sql/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/curzon01/mqtt2sql.svg?style=social&label=Fork)](https://github.com/curzon01/mqtt2sql/network)
+
 Two basic database tables and a view are available:
 
 - `mqtt`: contains the data subsribed to
