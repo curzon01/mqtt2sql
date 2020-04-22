@@ -10,13 +10,14 @@ If you like **mqtt2sql** give it a star or fork it:
 [![GitHub stars](https://img.shields.io/github/stars/curzon01/mqtt2sql.svg?style=social&label=Star)](https://github.com/curzon01/mqtt2sql/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/curzon01/mqtt2sql.svg?style=social&label=Fork)](https://github.com/curzon01/mqtt2sql/network)
 
-Two basic database tables and a view are available:
+The MQTT data are provided in the following tables/view:
 
-- `mqtt`: contains the data subsribed to
-- `mqtt_history`: contains the historical data changes in `mqtt`
-- `mqtt_history_view` can be used to get the data from `mqtt_history` with human readable topics
-
-History data can be disabled by topic or in general setting the `mqtt` table columns `history_enable` and `history_diffonly` accordingly (see [History data](#history-data)).
+- Table `mqtt`  
+contains the last MQTT copied payload for the subcribed topic
+- Table `mqtt_history`  
+contains the payloads history from `mqtt`. History data can be disabled by topic or in general (see [History control](#history-control)).
+- View `mqtt_history_view`  
+contains data from `mqtt_history` with readable topics and timestamps (see [History view](#history-view))
 
 ## Content
 
@@ -26,7 +27,12 @@ History data can be disabled by topic or in general setting the `mqtt` table col
 
 ## Installation
 
-During the installation, we create a usable [Python 3.x](https://www.python.org/downloads/) environment, create the necessary databases and objects, test the program and, if desired, create a system daemon.
+During the installation we
+
+- create a usable [Python 3.x](https://www.python.org/downloads/) environment
+- create the necessary databases and objects
+- test the program
+- and if desired, create a system daemon
 
 ### Python prerequisites
 
@@ -126,15 +132,19 @@ If you got a help page, you can start try to run it using one of the existing da
 The program allows the entire program parameters to be transferred in a configuration file instead of as individual program parameters.  
 For the following service file we use a copy of the configuration file [mqtt2sql.conf](https://github.com/curzon01/mqtt2sql/blob/master/mqtt2sql.conf) for parameterization and chnage it to our needs. This means that we do not have to edit the service file in the case of changes.
 
-Make a copy of the configuration file and edit the parameter
+#### Make a copy of the program and configuration file and edit the parameter
 
 ```bash
+sudo mkdir -p /usr/local/bin/
+sudo cp mqtt2sql.py /usr/local/bin/
 sudo mkdir -p /usr/local/etc/
 sudo cp mqtt2sql.conf /usr/local/etc/
 sudo nano /usr/local/etc/mqtt2sql.conf
 ```
 
-Create mqtt2sql.service
+edit the configuration parameter for your needs and save it with `Ctrl+o` `Ctrl+x`.
+
+#### Create mqtt2sql.service
 
 ```bash
 sudo nano /etc/systemd/system/mqtt2sql.service
@@ -156,7 +166,7 @@ ExecStart=/usr/local/bin/mqtt2sql.py --configfile /usr/local/etc/mqtt2sql.conf
 WantedBy=multi-user.target
 ```
 
-Reload systemd manager, restart daemon and check succes
+#### Reload systemd manager, restart daemon and check success
 
 ```bash
 sudo systemctl daemon-reload
@@ -164,7 +174,7 @@ sudo systemctl restart mqtt2sql
 sudo systemctl status mqtt2sql
 ```
 
-Finally be sure the service is enabled:
+#### Finally enable the service
 
 ```bash
 sudo systemctl enable mqtt2sql
@@ -172,15 +182,16 @@ sudo systemctl enable mqtt2sql
 
 ## History data
 
-The default database objects created by this scripts enables history data as default.
-The table `mqtt` contains current data received from subscription and the table `mqtt_history` contains the historical data. The default setup is storing only changed values within `mqtt_history`.
+Table `mqtt_history` contains data history from table `mqtt` changes received by the MQTT subscription. The default setup is storing only changed values within `mqtt_history`.
+
+Database objects created by this scripts enables history data as default.
 
 ### History control
 
-Two columns in `mqtt` table controls whether and how the historical data are saved:
+History data creation depends on two columns in `mqtt` table:
 
-- column `history_enable` controls whether a topic should be saved in the history (1) or not (0).
-- column `history_diffonly` controls whether all incoming value changes should be saved in the history (0) or only if there was a change in the topic value (1).
+- column `history_enable` actuate whether topic payload is saved in history (1) or not (0).
+- column `history_diffonly` actuate whether topic payload is saved in history if it is different to previously (1) or always (0). Note: this column setting neglected if `history_enable` is 0.
 
 #### Change history control for exiting records
 
@@ -205,4 +216,4 @@ The view `mqtt_history_view` can be used to get the history data with human read
 - `ts` is the timestamp from lastest insert into the `mqtt_history` table
 - `ts_last` is the timestamp from lastest change
 
-If you has `history_diffonly` enabled (1), the `ts_last` views the latest recevied timestamp (independent if the value has change or not) where `ts` shows the timestamp of the last value change.
+If `history_diffonly` is enabled (1), `ts` shows the timestamp of the last payload change where the `ts_last` shows the latest recevied timestamp (independent if the last recevied payload has change or not).
