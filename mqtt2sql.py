@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.1.0031'
+VER = '2.1.0032'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -56,7 +56,6 @@ def module_import_error(module):
 import os
 import sys
 try:
-    import imp
     import paho.mqtt.client as mqtt
     import time
     import datetime
@@ -70,19 +69,18 @@ except ImportError as err:
     module_import_error(err)
 
 try:
-    imp.find_module('ssl')
     import ssl
     MODULE_SSL = True
 except ImportError:
     MODULE_SSL = False
+
 try:
-    imp.find_module('MySQLdb')
     import MySQLdb
     MODULE_MYSQLDB = True
 except ImportError:
     MODULE_MYSQLDB = False
+
 try:
-    imp.find_module('sqlite3')
     import sqlite3
     MODULE_SQLITE3 = True
 except ImportError:
