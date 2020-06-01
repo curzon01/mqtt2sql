@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.1.0032'
+VER = '2.1.0033'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -47,9 +47,8 @@ def module_import_error(module):
 
     @param module: import module name
     """
-
     err_str = str(module)
-    print("{}. Try 'pip install {}' to install".format(err_str, err_str.split(' ')[len(err_str.split(' '))-1]))
+    print("{}. Try 'python -m pip install {}' to install".format(err_str, err_str.split(' ')[len(err_str.split(' '))-1]))
     sys.exit(9)
 
 # pylint: disable=wrong-import-position
@@ -87,8 +86,9 @@ except ImportError:
     MODULE_SQLITE3 = False
 # pylint: enable=wrong-import-position
 
+SCRIPTNAME = os.path.basename(sys.argv[0])
 EXIT_CODE = ExitCode.OK
-SQLTYPES = {'mysql':'MySQl', 'sqlite':'SQLite'} 
+SQLTYPES = {'mysql':'MySQl', 'sqlite':'SQLite'}
 ARGS = {}
 DEFAULTS = {
     'configfile': None,
@@ -126,7 +126,7 @@ def log(msg):
 
     @param msg: message to output
     """
-
+    global ARGS   # pylint: disable=global-statement
     strtime = str(time.strftime("%Y-%m-%d %H:%M:%S"))
     # print strtime+': '+msg
     if ARGS.logfile is not None:
@@ -149,7 +149,7 @@ def debuglog(dbglevel, msg):
         if -d is given two times and dbglevel is 2, then msg will output
     @param msg: message to output
     """
-
+    global ARGS   # pylint: disable=global-statement
     if ARGS.debug is not None and ARGS.debug > dbglevel:
         log(msg)
 
@@ -173,6 +173,10 @@ def write2sql(message):
         @param error_str:
             error string to output
         """
+        # pylint: disable=global-statement
+        global ARGS
+        global SQLTYPES
+        # pylint: enable=global-statement
         nonlocal db_connection, sql, transaction_retry
 
         typestr = SQLTYPES[ARGS.sql_type]
@@ -191,7 +195,13 @@ def write2sql(message):
             db_connection.rollback()
             transaction_retry = 0
 
-    global EXIT_CODE    # pylint: disable=global-statement
+    # pylint: disable=global-statement
+    global EXIT_CODE
+    global ARGS
+    global SQLTYPES
+    global POOL_SQLCONNECTIONS
+    # pylint: enable=global-statement
+
     if EXIT_CODE != ExitCode.OK:
         sys.exit(0)
 
@@ -317,6 +327,7 @@ def on_connect(client, userdata, message, return_code):
     @param return_code:
         the connection result
     """
+    global ARGS   # pylint: disable=global-statement
     debuglog(1, "MQTT on_connect({},{},{},{}): {}".format(client, userdata, message, return_code, mqtt.error_string(return_code)))
     for topic in ARGS.mqtt_topic:
         debuglog(1, "subscribe to topic {}".format(topic))
@@ -335,6 +346,11 @@ def on_message(client, userdata, message):
         an instance of MQTTMessage.
         This is a class with members topic, payload, qos, retain.
     """
+    # pylint: disable=global-statement
+    global EXIT_CODE
+    global ARGS
+    global POOL_SQLCONNECTIONS
+    # pylint: enable=global-statement
     if EXIT_CODE != ExitCode.OK:
         sys.exit(EXIT_CODE)
     if ARGS.verbose is not None and ARGS.verbose > 0:
@@ -425,19 +441,30 @@ class SignalHandler:
         """
         local exit with logging
         """
+        global SCRIPTNAME   # pylint: disable=global-statement
         debuglog(2, "SignalHandler.exitus({},{})".format(signal_, frame_))
         exit_(signal, '{} v{} end - signal {}'.format(SCRIPTNAME, VER, signal_))
 
-if __name__ == "__main__":
-    # set signal handler
-    SIG = SignalHandler()
+def parseargs():
+    """
+    Program argument parser
 
-    # Parse command line arguments
-    PARSER = configargparse.ArgumentParser(\
+    @return:
+        configargparse.parse_args() result
+    """
+    # pylint: disable=global-statement
+    global VER
+    global DEFAULTS
+    global MODULE_SSL
+    global MODULE_MYSQLDB
+    global MODULE_SQLITE3
+    # pylint: enable=global-statement
+
+    parser = configargparse.ArgumentParser(\
             description='MQTT to MySQL bridge. Subscribes to MQTT broker topic(s) and write values into a database.',
             epilog="There are no required arguments, defaults are displayed using --help."
             )
-    PARSER.add_argument(
+    parser.add_argument(
         '-c', '--configfile',
         metavar="<filename>",
         dest='configfile',
@@ -446,16 +473,16 @@ if __name__ == "__main__":
         help="Config file, can be used instead of command parameter (default {})".format(DEFAULTS['configfile'])
     )
 
-    MQTT_GROUP = PARSER.add_argument_group('MQTT Options')
-    MQTT_GROUP.add_argument(
+    mqtt_group = parser.add_argument_group('MQTT Options')
+    mqtt_group.add_argument(
         '--mqtt-host',
         metavar='<host>',
         dest='mqtt_host',
         default=DEFAULTS['mqtt-host'],
         help="host to connect to (default '{}')".format(DEFAULTS['mqtt-host'])
     )
-    MQTT_GROUP.add_argument('--mqtthost', '--host', dest='mqtt_host', help=configargparse.SUPPRESS)
-    MQTT_GROUP.add_argument(
+    mqtt_group.add_argument('--mqtthost', '--host', dest='mqtt_host', help=configargparse.SUPPRESS)
+    mqtt_group.add_argument(
         '--mqtt-port',
         metavar='<port>',
         dest='mqtt_port',
@@ -463,150 +490,150 @@ if __name__ == "__main__":
         default=DEFAULTS['mqtt-port'],
         help="port to connect to (default {})".format(DEFAULTS['mqtt-port'])
     )
-    MQTT_GROUP.add_argument('--mqttport', '--port', dest='mqtt_port', type=int, help=configargparse.SUPPRESS)
-    MQTT_GROUP.add_argument(
+    mqtt_group.add_argument('--mqttport', '--port', dest='mqtt_port', type=int, help=configargparse.SUPPRESS)
+    mqtt_group.add_argument(
         '--mqtt-username',
         metavar='<username>',
         dest='mqtt_username',
         default=DEFAULTS['mqtt-username'],
         help="username (default {})".format(DEFAULTS['mqtt-username'])
     )
-    MQTT_GROUP.add_argument('--mqttusername', '--username', dest='mqtt_username', help=configargparse.SUPPRESS)
-    MQTT_GROUP.add_argument(
+    mqtt_group.add_argument('--mqttusername', '--username', dest='mqtt_username', help=configargparse.SUPPRESS)
+    mqtt_group.add_argument(
         '--mqtt-password',
         metavar='<password>',
         dest='mqtt_password',
         default=DEFAULTS['mqtt-password'],
         help="password (default {})".format(DEFAULTS['mqtt-password']))
-    MQTT_GROUP.add_argument('--mqttpassword', '--password', dest='mqtt_password', help=configargparse.SUPPRESS)
-    MQTT_GROUP.add_argument(
+    mqtt_group.add_argument('--mqttpassword', '--password', dest='mqtt_password', help=configargparse.SUPPRESS)
+    mqtt_group.add_argument(
         '--mqtt-topic',
         metavar='<topic>',
         dest='mqtt_topic',
         nargs='*',
         default=DEFAULTS['mqtt-topic'],
         help="topic to use (default {})".format(DEFAULTS['mqtt-topic']))
-    MQTT_GROUP.add_argument('--topic', dest='mqtt_topic', nargs='*', help=configargparse.SUPPRESS)
-    MQTT_GROUP.add_argument(
+    mqtt_group.add_argument('--topic', dest='mqtt_topic', nargs='*', help=configargparse.SUPPRESS)
+    mqtt_group.add_argument(
         '--mqtt-cafile',
         metavar='<cafile>',
         dest='mqtt_cafile',
         default=DEFAULTS['mqtt-cafile'],
         help="cafile (default {})".format(DEFAULTS['mqtt-cafile']) if MODULE_SSL else configargparse.SUPPRESS)
-    MQTT_GROUP.add_argument('--cafile', dest='mqtt_cafile', help=configargparse.SUPPRESS)
-    MQTT_GROUP.add_argument(
+    mqtt_group.add_argument('--cafile', dest='mqtt_cafile', help=configargparse.SUPPRESS)
+    mqtt_group.add_argument(
         '--mqtt-certfile',
         metavar='<certfile>',
         dest='mqtt_certfile',
         default=DEFAULTS['mqtt-certfile'],
         help="certfile (default {})".format(DEFAULTS['mqtt-certfile']) if MODULE_SSL else configargparse.SUPPRESS)
-    MQTT_GROUP.add_argument('--certfile', dest='mqtt_certfile', help=configargparse.SUPPRESS)
-    MQTT_GROUP.add_argument(
+    mqtt_group.add_argument('--certfile', dest='mqtt_certfile', help=configargparse.SUPPRESS)
+    mqtt_group.add_argument(
         '--mqtt-keyfile',
         metavar='<keyfile>',
         dest='mqtt_keyfile',
         default=DEFAULTS['mqtt-keyfile'],
         help="keyfile (default {})".format(DEFAULTS['mqtt-keyfile']) if MODULE_SSL else configargparse.SUPPRESS)
-    MQTT_GROUP.add_argument('--keyfile', dest='mqtt_keyfile', help=configargparse.SUPPRESS)
-    MQTT_GROUP.add_argument(
+    mqtt_group.add_argument('--keyfile', dest='mqtt_keyfile', help=configargparse.SUPPRESS)
+    mqtt_group.add_argument(
         '--mqtt-insecure',
         dest='mqtt_insecure',
         action='store_true',
         default=DEFAULTS['mqtt-insecure'],
         help="suppress TLS verification (default {})".format(DEFAULTS['mqtt-insecure']) if MODULE_SSL else configargparse.SUPPRESS)
-    MQTT_GROUP.add_argument('--insecure', dest='mqtt_insecure', help=configargparse.SUPPRESS)
-    MQTT_GROUP.add_argument(
+    mqtt_group.add_argument('--insecure', dest='mqtt_insecure', help=configargparse.SUPPRESS)
+    mqtt_group.add_argument(
         '--mqtt-keepalive',
         metavar='<sec>',
         dest='mqtt_keepalive',
         type=int,
         default=DEFAULTS['mqtt-keepalive'],
         help="keepalive timeout for the client (default {})".format(DEFAULTS['mqtt-keepalive']))
-    MQTT_GROUP.add_argument('--keepalive', dest='mqtt_keepalive', type=int, help=configargparse.SUPPRESS)
+    mqtt_group.add_argument('--keepalive', dest='mqtt_keepalive', type=int, help=configargparse.SUPPRESS)
 
-    SQL_GROUP = PARSER.add_argument_group('SQL Options')
-    SQL_CHOICES = []
+    sql_group = parser.add_argument_group('SQL Options')
+    sql_choices = []
     if MODULE_MYSQLDB:
-        SQL_CHOICES.append('mysql')
+        sql_choices.append('mysql')
     if MODULE_SQLITE3:
-        SQL_CHOICES.append('sqlite')
-    if len(SQL_CHOICES) == 0:
+        sql_choices.append('sqlite')
+    if len(sql_choices) == 0:
         exit_(ExitCode.MISSING_MODULE, 'Either module MySQLdb or sqlite must be installed')
 
-    SQL_GROUP.add_argument(
+    sql_group.add_argument(
         '--sql-type',
         metavar='<type>',
         dest='sql_type',
-        choices=SQL_CHOICES,
+        choices=sql_choices,
         default=DEFAULTS['sql-type'],
-        help="server type {} (default '{}')".format(SQL_CHOICES, DEFAULTS['sql-type']))
-    SQL_GROUP.add_argument('--sqltype', dest='sql_type', choices=SQL_CHOICES, help=configargparse.SUPPRESS)
-    SQL_GROUP.add_argument(
+        help="server type {} (default '{}')".format(sql_choices, DEFAULTS['sql-type']))
+    sql_group.add_argument('--sqltype', dest='sql_type', choices=sql_choices, help=configargparse.SUPPRESS)
+    sql_group.add_argument(
         '--sql-host',
         metavar='<host>',
         dest='sql_host',
         default=DEFAULTS['sql-host'],
         help="host to connect (default '{}')".format(DEFAULTS['sql-host']))
-    SQL_GROUP.add_argument('--sqlhost', dest='sql_host', help=configargparse.SUPPRESS)
-    SQL_GROUP.add_argument(
+    sql_group.add_argument('--sqlhost', dest='sql_host', help=configargparse.SUPPRESS)
+    sql_group.add_argument(
         '--sql-port',
         metavar='<port>',
         dest='sql_port',
         type=int,
         default=DEFAULTS['sql-port'],
         help="port to connect (default {})".format(DEFAULTS['sql-port']))
-    SQL_GROUP.add_argument('--sqlport', dest='sql_port', type=int, help=configargparse.SUPPRESS)
-    SQL_GROUP.add_argument(
+    sql_group.add_argument('--sqlport', dest='sql_port', type=int, help=configargparse.SUPPRESS)
+    sql_group.add_argument(
         '--sql-username',
         metavar='<username>',
         dest='sql_username',
         default=DEFAULTS['sql-username'],
         help="username (default {})".format(DEFAULTS['sql-username']))
-    SQL_GROUP.add_argument('--sqlusername', dest='sql_username', help=configargparse.SUPPRESS)
-    SQL_GROUP.add_argument(
+    sql_group.add_argument('--sqlusername', dest='sql_username', help=configargparse.SUPPRESS)
+    sql_group.add_argument(
         '--sql-password',
         metavar='<password>',
         dest='sql_password',
         default=DEFAULTS['sql-password'],
         help="password (default {})".format(DEFAULTS['sql-password']))
-    SQL_GROUP.add_argument('--sqlpassword', dest='sql_password', help=configargparse.SUPPRESS)
-    SQL_GROUP.add_argument(
+    sql_group.add_argument('--sqlpassword', dest='sql_password', help=configargparse.SUPPRESS)
+    sql_group.add_argument(
         '--sql-db',
         metavar='<db>',
         dest='sql_db',
         default=DEFAULTS['sql-db'],
         help="database to use (default '{}')".format(DEFAULTS['sql-db']))
-    SQL_GROUP.add_argument('--sqldb', dest='sql_db', help=configargparse.SUPPRESS)
-    SQL_GROUP.add_argument(
+    sql_group.add_argument('--sqldb', dest='sql_db', help=configargparse.SUPPRESS)
+    sql_group.add_argument(
         '--sql-table',
         metavar='<table>',
         dest='sql_table',
         default=DEFAULTS['sql-table'],
         help="table to use (default '{}')".format(DEFAULTS['sql-table']))
-    SQL_GROUP.add_argument('--sqltable', dest='sql_table', help=configargparse.SUPPRESS)
-    SQL_GROUP.add_argument(
+    sql_group.add_argument('--sqltable', dest='sql_table', help=configargparse.SUPPRESS)
+    sql_group.add_argument(
         '--sql-max-connection',
         metavar='<num>',
         dest='sql_max_connection',
         type=int,
         default=DEFAULTS['sql-max-connection'],
         help="maximum number of simultaneous connections (default {})".format(DEFAULTS['sql-max-connection']))
-    SQL_GROUP.add_argument('--sqlmaxconnection', dest='sql_max_connection', type=int, help=configargparse.SUPPRESS)
-    SQL_GROUP.add_argument(
+    sql_group.add_argument('--sqlmaxconnection', dest='sql_max_connection', type=int, help=configargparse.SUPPRESS)
+    sql_group.add_argument(
         '--sql-connection-retry',
         metavar='<num>',
         dest='sql_connection_retry',
         type=int,
         default=DEFAULTS['sql-connection-retry'],
         help="maximum number of SQL connection retries on error (default {})".format(DEFAULTS['sql-connection-retry']))
-    SQL_GROUP.add_argument(
+    sql_group.add_argument(
         '--sql-connection-retry-start-delay',
         metavar='<sec>',
         dest='sql_connection_retry_start_delay',
         type=float,
         default=DEFAULTS['sql-connection-retry-start-delay'],
         help="start delay between SQL reconnect retry (default {}), is doubled after each occurrence".format(DEFAULTS['sql-connection-retry-start-delay']))
-    SQL_GROUP.add_argument(
+    sql_group.add_argument(
         '--sql-transaction-retry',
         metavar='<num>',
         dest='sql_transaction_retry',
@@ -614,32 +641,36 @@ if __name__ == "__main__":
         default=DEFAULTS['sql-transaction-retry'],
         help="maximum number of SQL transaction retry on error (default {})".format(DEFAULTS['sql-transaction-retry']))
 
-    LOGGING_GROUP = PARSER.add_argument_group('Informational')
-    LOGGING_GROUP.add_argument(
+    logging_group = parser.add_argument_group('Informational')
+    logging_group.add_argument(
         '-l', '--logfile',
         metavar='<filename>',
         dest='logfile',
         default=DEFAULTS['logfile'],
         help="optional logfile (default {}".format(DEFAULTS['logfile']))
-    LOGGING_GROUP.add_argument(
+    logging_group.add_argument(
         '-d', '--debug',
         dest='debug',
         action='count',
         help='debug output')
-    LOGGING_GROUP.add_argument(
+    logging_group.add_argument(
         '-v', '--verbose',
         dest='verbose',
         action='count',
         help='verbose output')
-    LOGGING_GROUP.add_argument(
+    logging_group.add_argument(
         '-V', '--version',
         action='version',
         version='%(prog)s v'+VER)
 
-    ARGS = PARSER.parse_args()
+    return parser.parse_args()
 
-    # Get own script name
-    SCRIPTNAME = os.path.basename(sys.argv[0])
+if __name__ == "__main__":
+    # set signal handler
+    SIG = SignalHandler()
+
+    # Parse command line arguments
+    ARGS = parseargs()
 
     # Log program start
     log('{} v{} start'.format(SCRIPTNAME, VER))
