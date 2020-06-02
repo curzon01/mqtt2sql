@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.1.0033'
+VER = '2.3.0036'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
 
-    Copyright (C) 2019 Norbert Richter <nr@prsolution.eu>
+    Copyright (C) 2020 Norbert Richter <nr@prsolution.eu>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -66,27 +66,25 @@ try:
     from random import random
 except ImportError as err:
     module_import_error(err)
-
 try:
     import ssl
-    MODULE_SSL = True
+    MODULE_SSL_AVAIL = True
 except ImportError:
-    MODULE_SSL = False
-
+    MODULE_SSL_AVAIL = False
 try:
     import MySQLdb
-    MODULE_MYSQLDB = True
+    MODULE_MYSQLDB_AVAIL = True
 except ImportError:
-    MODULE_MYSQLDB = False
-
+    MODULE_MYSQLDB_AVAIL = False
 try:
     import sqlite3
-    MODULE_SQLITE3 = True
+    MODULE_SQLITE3_AVAIL = True
 except ImportError:
-    MODULE_SQLITE3 = False
+    MODULE_SQLITE3_AVAIL = False
 # pylint: enable=wrong-import-position
 
 SCRIPTNAME = os.path.basename(sys.argv[0])
+SCRIPTPID = os.getpid()
 EXIT_CODE = ExitCode.OK
 SQLTYPES = {'mysql':'MySQl', 'sqlite':'SQLite'}
 ARGS = {}
@@ -107,7 +105,7 @@ DEFAULTS = {
     'mqtt-insecure': False,
     'mqtt-keepalive': 60,
 
-    'sql-type': 'mysql' if MODULE_MYSQLDB else ('sqlite' if MODULE_SQLITE3 else None),
+    'sql-type': 'mysql' if MODULE_MYSQLDB_AVAIL else ('sqlite' if MODULE_SQLITE3_AVAIL else None),
     'sql-host': 'localhost',
     'sql-port': 3306,
     'sql-username': None,
@@ -120,331 +118,6 @@ DEFAULTS = {
     'sql-transaction-retry': 10
 }
 
-def log(msg):
-    """
-    Writes a message to stdout and optional logfile
-
-    @param msg: message to output
-    """
-    global ARGS   # pylint: disable=global-statement
-    strtime = str(time.strftime("%Y-%m-%d %H:%M:%S"))
-    # print strtime+': '+msg
-    if ARGS.logfile is not None:
-        filename = str(time.strftime(ARGS.logfile, time.localtime()))
-        logfile = open(filename, "a")
-        logfile.write(strtime+': '+msg+'\n')
-        logfile.close()
-    print(strtime+': '+msg)
-
-def debuglog(dbglevel, msg):
-    """
-    Writes a message to stdout and optional logfile
-    if given dbglevel is >= ARGS.debug
-
-    @param dbglevel:
-        debug level used
-        e.g.
-        if -d is given one time and dbglevel is 1, then msg is output
-        if -d is given one time and dbglevel is 2, then msg will not output
-        if -d is given two times and dbglevel is 2, then msg will output
-    @param msg: message to output
-    """
-    global ARGS   # pylint: disable=global-statement
-    if ARGS.debug is not None and ARGS.debug > dbglevel:
-        log(msg)
-
-def write2sql(message):
-    """
-    Called as thread from mqtt backlog handler when a message has been
-    received on a topic that the client subscribes to.
-
-    @param message:
-        an instance of MQTTMessage.
-        This is a class with members topic, payload, qos, retain.
-    """
-    def sql_execute_exception(retry_condition, error_str):
-        """
-        handling local SQL exceptions
-
-        @param retry_condition:
-            condition for retry transaction
-            if True delay process and return
-            if False rollback transaction and return
-        @param error_str:
-            error string to output
-        """
-        # pylint: disable=global-statement
-        global ARGS
-        global SQLTYPES
-        # pylint: enable=global-statement
-        nonlocal db_connection, sql, transaction_retry
-
-        typestr = SQLTYPES[ARGS.sql_type]
-
-        transaction_delay = random()
-        transaction_delay *= 2
-        debuglog(1, "[{}]: {} transaction ERROR: {}, retry={}, delay={}".format(threading.get_ident(), typestr, error_str, transaction_retry, transaction_delay))
-        if retry_condition:
-            transaction_retry -= 1
-            log("SQL transaction ERROR: {} - try retry".format(err))
-            time.sleep(transaction_delay)
-        else:
-            log("{} transaction ERROR {}".format(typestr, error_str))
-            log("{} give up: {}".format(typestr, sql))
-            # Rollback in case there is any error
-            db_connection.rollback()
-            transaction_retry = 0
-
-    # pylint: disable=global-statement
-    global EXIT_CODE
-    global ARGS
-    global SQLTYPES
-    global POOL_SQLCONNECTIONS
-    # pylint: enable=global-statement
-
-    if EXIT_CODE != ExitCode.OK:
-        sys.exit(0)
-
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    connection_retry = ARGS.sql_connection_retry
-    connection_delay = ARGS.sql_connection_retry_start_delay
-    connection_delay_base = ARGS.sql_connection_retry_start_delay
-    debuglog(3, "SQL type is '{}'".format(SQLTYPES[ARGS.sql_type]))
-    db_connection = None
-    while connection_retry > 0:
-        if EXIT_CODE != ExitCode.OK:
-            sys.exit(0)
-        try:
-            if ARGS.sql_type == 'mysql':
-                if ARGS.sql_username is not None and ARGS.sql_password is not None:
-                    db_connection = MySQLdb.connect(ARGS.sql_host, ARGS.sql_username, ARGS.sql_password, ARGS.sql_db)
-                else:
-                    db_connection = MySQLdb.connect(ARGS.sql_host)
-            elif ARGS.sql_type == 'sqlite':
-                db_connection = sqlite3.connect(ARGS.sql_db)
-            connection_retry = 0
-
-        except Exception as err:    # pylint: disable=broad-except
-            connection_retry -= 1
-            debuglog(1, "[{}]: SQL connection ERROR: {}, retry={}, delay={}".format(threading.get_ident(), SQLTYPES[ARGS.sql_type], connection_retry, connection_delay))
-            if connection_retry > 0:
-                log("SQL connection ERROR: {} - try retry".format(err))
-                time.sleep(connection_delay)
-                connection_delay += connection_delay_base
-            else:
-                os.kill(os.getpid(), signal.SIGTERM)
-                exit_(ExitCode.SQL_CONNECTION_ERROR, "SQL connection ERROR: {} - give up".format(err))
-
-    transaction_retry = ARGS.sql_transaction_retry
-    while transaction_retry > 0:
-        if EXIT_CODE != ExitCode.OK:
-            sys.exit(0)
-        cursor = db_connection.cursor()
-        try:
-            # INSERT/UPDATE record
-            payload = message.payload
-            if not isinstance(payload, str):
-                payload = str(payload, 'utf-8', errors='ignore')
-            if ARGS.sql_type == 'mysql':
-                sql = "INSERT INTO `{0}` \
-                       SET `ts`='{1}',`topic`='{2}',`value`='{3}',`qos`='{4}',`retain`='{5}' \
-                       ON DUPLICATE KEY UPDATE `ts`='{1}',`value`='{3}',`qos`='{4}',`retain`='{5}'"\
-                    .format(
-                        ARGS.sql_table,
-                        timestamp,
-                        message.topic,
-                        payload,
-                        message.qos,
-                        message.retain
-                    )
-                debuglog(4, "SQL exec: '{}'".format(sql))
-                cursor.execute(sql)
-            elif ARGS.sql_type == 'sqlite':
-                # strtime=str(time.strftime("%Y-%m-%d %H:%M:%S"))
-                sql1 = "INSERT OR IGNORE INTO `{0}` \
-                        (ts,topic,value,qos,retain) \
-                        VALUES('{1}','{2}','{3}','{4}','{5}')"\
-                    .format(
-                        ARGS.sql_table,
-                        timestamp,
-                        message.topic,
-                        payload,
-                        message.qos,
-                        message.retain
-                    )
-                sql2 = "UPDATE `{0}` \
-                        SET ts='{1}', \
-                            value='{3}', \
-                            qos='{4}', \
-                            retain='{5}' \
-                        WHERE topic='{2}'"\
-                    .format(
-                        ARGS.sql_table,
-                        timestamp,
-                        message.topic,
-                        payload,
-                        message.qos,
-                        message.retain
-                    )
-                sql = sql1 + '\n' + sql2
-                debuglog(4, "SQL exec: '{}'".format(sql))
-                cursor.execute(sql1)
-                cursor.execute(sql2)
-
-            db_connection.commit()
-            debuglog(1, "[{}]: SQL success: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(threading.get_ident(), ARGS.sql_table, message.topic, payload, message.qos, message.retain))
-            transaction_retry = 0
-
-        except MySQLdb.Error as err:    # pylint: disable=no-member
-            sql_execute_exception(
-                err.args[0] in [1040, 1205, 1213],
-                "[{}]: {}".format(err.args[0], err.args[1])
-                )
-
-        except sqlite3.Error as err:
-            sql_execute_exception(
-                "database is locked" in str(err).lower(),
-                err
-                )
-
-        finally:
-            cursor.close()
-
-    db_connection.close()
-    POOL_SQLCONNECTIONS.release()
-
-
-def on_connect(client, userdata, message, return_code):
-    """
-    Called when the broker responds to our connection request.
-
-    @param client:
-        the client instance for this callback
-    @param userdata:
-        the private user data as set in Client() or userdata_set()
-    @param message:
-        response message sent by the broker
-    @param return_code:
-        the connection result
-    """
-    global ARGS   # pylint: disable=global-statement
-    debuglog(1, "MQTT on_connect({},{},{},{}): {}".format(client, userdata, message, return_code, mqtt.error_string(return_code)))
-    for topic in ARGS.mqtt_topic:
-        debuglog(1, "subscribe to topic {}".format(topic))
-        client.subscribe(topic, 0)
-
-def on_message(client, userdata, message):
-    """
-    Called when a message has been received on a topic that the client subscribes to.
-    This callback will be called for every message received.
-
-    @param client:
-        the client instance for this callback
-    @param userdata:
-        the private user data as set in Client() or userdata_set()
-    @param message:
-        an instance of MQTTMessage.
-        This is a class with members topic, payload, qos, retain.
-    """
-    # pylint: disable=global-statement
-    global EXIT_CODE
-    global ARGS
-    global POOL_SQLCONNECTIONS
-    # pylint: enable=global-statement
-    if EXIT_CODE != ExitCode.OK:
-        sys.exit(EXIT_CODE)
-    if ARGS.verbose is not None and ARGS.verbose > 0:
-        log('{} {} [QOS {} Retain {}]'.format(message.topic, message.payload, message.qos, message.retain))
-
-    debuglog(2, "on_message({},{},{})".format(client, userdata, message))
-    POOL_SQLCONNECTIONS.acquire()
-    Thread(target=write2sql, args=(message,)).start()
-
-def on_publish(client, userdata, mid):
-    """
-    Called when a message that was to be sent using the publish() call
-    has completed transmission to the broker.
-    For messages with QoS levels 1 and 2, this means that the appropriate
-    handshakes have completed. For QoS 0, this simply means that the
-    message has left the client. The mid variable matches the mid
-    variable returned from the corresponding publish() call, to allow
-    outgoing messages to be tracked.
-
-    @param client:
-        the client instance for this callback
-    @param userdata:
-        the private user data as set in Client() or userdata_set()
-    @param mid:
-        matches the mid variable returned from the corresponding
-        publish() call, to allow outgoing messages to be tracked.
-    """
-    debuglog(2, "on_publish({},{},{})".format(client, userdata, mid))
-
-def on_subscribe(client, userdata, mid, granted_qos):
-    """
-    Called when the broker responds to a subscribe request.
-
-    @param client:
-        the client instance for this callback
-    @param userdata:
-        the private user data as set in Client() or userdata_set()
-    @param mid:
-        Matches the mid variable returned from the corresponding
-        subscribe() call.
-    @param granted_qos:
-        a list of integers that give the QoS level the broker has
-        granted for each of the different subscription requests.
-    """
-    debuglog(2, "on_subscribe({},{},{},{})".format(client, userdata, mid, granted_qos))
-
-def on_log(client, userdata, level, string):
-    """
-    Called when the client has log information.
-
-    @param client:
-        the client instance for this callback
-    @param userdata:
-        the private user data as set in Client() or userdata_set()
-    @param level:
-        gives the severity of the message and will be one of
-        MQTT_LOG_INFO, MQTT_LOG_NOTICE, MQTT_LOG_WARNING, MQTT_LOG_ERR,
-        and MQTT_LOG_DEBUG. The message itself is in string.
-    @param string:
-        The message itself
-    """
-    debuglog(2, "on_log({},{},{},{})".format(client, userdata, level, string))
-
-def exit_(status=0, message="end"):
-    """
-    Called when the program should be exit
-
-    @param status:
-        the exit status program returns to callert
-    @param message:
-        the message logged before exit
-    """
-    global EXIT_CODE    # pylint: disable=global-statement
-
-    log(message)
-    EXIT_CODE = status
-    sys.exit(status)
-
-class SignalHandler:
-    """
-    Signal Handler Class
-    """
-    def __init__(self):
-        signal.signal(signal.SIGINT, self.exitus)
-        signal.signal(signal.SIGTERM, self.exitus)
-
-    def exitus(self, signal_, frame_):
-        """
-        local exit with logging
-        """
-        global SCRIPTNAME   # pylint: disable=global-statement
-        debuglog(2, "SignalHandler.exitus({},{})".format(signal_, frame_))
-        exit_(signal, '{} v{} end - signal {}'.format(SCRIPTNAME, VER, signal_))
-
 def parseargs():
     """
     Program argument parser
@@ -455,9 +128,9 @@ def parseargs():
     # pylint: disable=global-statement
     global VER
     global DEFAULTS
-    global MODULE_SSL
-    global MODULE_MYSQLDB
-    global MODULE_SQLITE3
+    global MODULE_SSL_AVAIL
+    global MODULE_MYSQLDB_AVAIL
+    global MODULE_SQLITE3_AVAIL
     # pylint: enable=global-statement
 
     parser = configargparse.ArgumentParser(\
@@ -519,28 +192,28 @@ def parseargs():
         metavar='<cafile>',
         dest='mqtt_cafile',
         default=DEFAULTS['mqtt-cafile'],
-        help="cafile (default {})".format(DEFAULTS['mqtt-cafile']) if MODULE_SSL else configargparse.SUPPRESS)
+        help="cafile (default {})".format(DEFAULTS['mqtt-cafile']) if MODULE_SSL_AVAIL else configargparse.SUPPRESS)
     mqtt_group.add_argument('--cafile', dest='mqtt_cafile', help=configargparse.SUPPRESS)
     mqtt_group.add_argument(
         '--mqtt-certfile',
         metavar='<certfile>',
         dest='mqtt_certfile',
         default=DEFAULTS['mqtt-certfile'],
-        help="certfile (default {})".format(DEFAULTS['mqtt-certfile']) if MODULE_SSL else configargparse.SUPPRESS)
+        help="certfile (default {})".format(DEFAULTS['mqtt-certfile']) if MODULE_SSL_AVAIL else configargparse.SUPPRESS)
     mqtt_group.add_argument('--certfile', dest='mqtt_certfile', help=configargparse.SUPPRESS)
     mqtt_group.add_argument(
         '--mqtt-keyfile',
         metavar='<keyfile>',
         dest='mqtt_keyfile',
         default=DEFAULTS['mqtt-keyfile'],
-        help="keyfile (default {})".format(DEFAULTS['mqtt-keyfile']) if MODULE_SSL else configargparse.SUPPRESS)
+        help="keyfile (default {})".format(DEFAULTS['mqtt-keyfile']) if MODULE_SSL_AVAIL else configargparse.SUPPRESS)
     mqtt_group.add_argument('--keyfile', dest='mqtt_keyfile', help=configargparse.SUPPRESS)
     mqtt_group.add_argument(
         '--mqtt-insecure',
         dest='mqtt_insecure',
         action='store_true',
         default=DEFAULTS['mqtt-insecure'],
-        help="suppress TLS verification (default {})".format(DEFAULTS['mqtt-insecure']) if MODULE_SSL else configargparse.SUPPRESS)
+        help="suppress TLS verification (default {})".format(DEFAULTS['mqtt-insecure']) if MODULE_SSL_AVAIL else configargparse.SUPPRESS)
     mqtt_group.add_argument('--insecure', dest='mqtt_insecure', help=configargparse.SUPPRESS)
     mqtt_group.add_argument(
         '--mqtt-keepalive',
@@ -553,12 +226,12 @@ def parseargs():
 
     sql_group = parser.add_argument_group('SQL Options')
     sql_choices = []
-    if MODULE_MYSQLDB:
+    if MODULE_MYSQLDB_AVAIL:
         sql_choices.append('mysql')
-    if MODULE_SQLITE3:
+    if MODULE_SQLITE3_AVAIL:
         sql_choices.append('sqlite')
     if len(sql_choices) == 0:
-        exit_(ExitCode.MISSING_MODULE, 'Either module MySQLdb or sqlite must be installed')
+        SignalHandler.exitus(ExitCode.MISSING_MODULE, 'Either module MySQLdb or sqlite must be installed')
 
     sql_group.add_argument(
         '--sql-type',
@@ -665,6 +338,509 @@ def parseargs():
 
     return parser.parse_args()
 
+def verbose_print(_args):
+    """
+    Verbose args
+
+    @param _args:
+        result from configargparse.parse_args()
+    """
+    log('  MQTT server: {}:{} {}{} keepalive {}'.format(_args.mqtt_host, _args.mqtt_port, 'SSL' if (_args.mqtt_cafile is not None) else '', ' (suppress TLS verification)' if _args.mqtt_insecure else '', _args.mqtt_keepalive))
+    log('       user:   {}'.format(_args.mqtt_username))
+    log('       topics: {}'.format(_args.mqtt_topic))
+    log('  SQL  type:   {}'.format(SQLTYPES[_args.sql_type]))
+    log('       server: {}:{} [max {} connections]'.format(_args.sql_host, _args.sql_port, _args.sql_max_connection))
+    log('       db:     {}'.format(_args.sql_db))
+    log('       table:  {}'.format(_args.sql_table))
+    log('       user:   {}'.format(_args.sql_username))
+    if _args.logfile is not None:
+        log('  Log file:    {}'.format(_args.logfile))
+    if debug_level() > 0:
+        log('  Debug level: {}'.format(debug_level()))
+    if verbose_level() > 0:
+        log('  Verbose level: {}'.format(verbose_level()))
+
+def verbose_level():
+    """
+    return verbose level (0 if disabled)
+    """
+    global ARGS         # pylint: disable=global-statement
+    if ARGS.verbose is not None and ARGS.verbose > 0:
+        return ARGS.verbose
+    return 0
+
+def debug_level():
+    """
+    return debug level (0 if disabled)
+    """
+    global ARGS         # pylint: disable=global-statement
+    if ARGS.debug is not None and ARGS.debug > 0:
+        return ARGS.debug
+    return 0
+
+def log(msg):
+    """
+    Writes a message to stdout and optional logfile
+
+    @param msg: message to output
+    """
+    global ARGS   # pylint: disable=global-statement
+    strtime = str(time.strftime("%Y-%m-%d %H:%M:%S"))
+    # print strtime+': '+msg
+    if ARGS.logfile is not None:
+        filename = str(time.strftime(ARGS.logfile, time.localtime()))
+        logfile = open(filename, "a")
+        logfile.write(strtime+': '+msg+'\n')
+        logfile.close()
+    print(strtime+': '+msg)
+
+def debuglog(dbglevel, msg):
+    """
+    Writes a message to stdout and optional logfile
+    if given dbglevel is >= debug_level()
+
+    @param dbglevel:
+        debug level used
+        e.g.
+        if -d is given one time and dbglevel is 1, then msg is output
+        if -d is given one time and dbglevel is 2, then msg will not output
+        if -d is given two times and dbglevel is 2, then msg will output
+    @param msg: message to output
+    """
+    if debug_level() > dbglevel:
+        log(msg)
+
+class Mqtt2Sql:
+    """
+    MQTT to SQL handling class
+    """
+    def __init__(self, args_):
+        self._args = args_
+        self.pool_sqlconnections = BoundedSemaphore(value=self._args.sql_max_connection)
+        self.userdata = {
+            'haveresponse' : False,
+            'starttime'    : time.time()
+        }
+        self.mqttc, ret = self.mqtt_connect(
+            host=self._args.mqtt_host,
+            port=self._args.mqtt_port,
+            username=self._args.mqtt_username,
+            password=self._args.mqtt_password,
+            keepalive=self._args.mqtt_keepalive,
+            cafile=self._args.mqtt_cafile,
+            certfile=self._args.mqtt_certfile,
+            keyfile=self._args.mqtt_keyfile,
+            insecure=self._args.mqtt_insecure,
+            userdata=self.userdata
+            )
+        if ret != ExitCode.OK:
+            SignalHandler.exitus(ret, '{}:{} failed - [{}] {} - "{}"'.format(self._args.mqtt_host, self._args.mqtt_port, ret, mqtt.error_string(ret), err))
+
+    def write2sql(self, message):
+        """
+        Called as thread from mqtt backlog handler when a message has been
+        received on a topic that the client subscribes to.
+
+        @param message:
+            an instance of MQTTMessage.
+            This is a class with members topic, payload, qos, retain.
+        """
+        def sql_execute_exception(retry_condition, error_str):
+            """
+            handling local SQL exceptions
+
+            @param retry_condition:
+                condition for retry transaction
+                if True delay process and return
+                if False rollback transaction and return
+            @param error_str:
+                error string to output
+            """
+            global SQLTYPES # pylint: disable=global-statement
+            nonlocal db_connection, sql, transaction_retry
+
+            typestr = SQLTYPES[self._args.sql_type]
+
+            transaction_delay = random()
+            transaction_delay *= 2
+            debuglog(1, "[{}]: {} transaction ERROR: {}, retry={}, delay={}".format(threading.get_ident(), typestr, error_str, transaction_retry, transaction_delay))
+            if retry_condition:
+                transaction_retry -= 1
+                log("SQL transaction NOTE: {} - try retry".format(err))
+                time.sleep(transaction_delay)
+            else:
+                log("{} transaction ERROR {}".format(typestr, error_str))
+                log("{} give up: {}".format(typestr, sql))
+                # Rollback in case there is any error
+                db_connection.rollback()
+                transaction_retry = 0
+
+        # pylint: disable=global-statement
+        global EXIT_CODE
+        global SQLTYPES
+        # pylint: enable=global-statement
+
+        if EXIT_CODE != ExitCode.OK:
+            sys.exit(0)
+
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        connection_retry = self._args.sql_connection_retry
+        connection_delay = self._args.sql_connection_retry_start_delay
+        connection_delay_base = self._args.sql_connection_retry_start_delay
+        debuglog(3, "SQL type is '{}'".format(SQLTYPES[self._args.sql_type]))
+        db_connection = None
+        while connection_retry > 0:
+            if EXIT_CODE != ExitCode.OK:
+                sys.exit(0)
+            try:
+                if self._args.sql_type == 'mysql':
+                    if self._args.sql_username is not None and self._args.sql_password is not None:
+                        db_connection = MySQLdb.connect(self._args.sql_host, self._args.sql_username, self._args.sql_password, self._args.sql_db)
+                    else:
+                        db_connection = MySQLdb.connect(self._args.sql_host)
+                elif self._args.sql_type == 'sqlite':
+                    db_connection = sqlite3.connect(self._args.sql_db)
+                connection_retry = 0
+            except Exception as err:    # pylint: disable=broad-except
+                connection_retry -= 1
+                debuglog(1, "[{}]: SQL connection ERROR: {}, retry={}, delay={}".format(threading.get_ident(), SQLTYPES[self._args.sql_type], connection_retry, connection_delay))
+                if connection_retry > 0:
+                    log("SQL connection NOTE: {} - try retry".format(err))
+                    time.sleep(connection_delay)
+                    connection_delay += connection_delay_base
+                else:
+                    os.kill(os.getpid(), signal.SIGTERM)
+                    SignalHandler.exitus(ExitCode.SQL_CONNECTION_ERROR, "SQL connection ERROR: {} - give up".format(err))
+
+        transaction_retry = self._args.sql_transaction_retry
+        while transaction_retry > 0:
+            if EXIT_CODE != ExitCode.OK:
+                sys.exit(0)
+            cursor = db_connection.cursor()
+            try:
+                # INSERT/UPDATE record
+                payload = message.payload
+                if not isinstance(payload, str):
+                    payload = str(payload, 'utf-8', errors='ignore')
+                if self._args.sql_type == 'mysql':
+                    sql = "INSERT INTO `{0}` \
+                        SET `ts`='{1}',`topic`='{2}',`value`='{3}',`qos`='{4}',`retain`='{5}' \
+                        ON DUPLICATE KEY UPDATE `ts`='{1}',`value`='{3}',`qos`='{4}',`retain`='{5}'"\
+                        .format(
+                            self._args.sql_table,
+                            timestamp,
+                            message.topic,
+                            payload,
+                            message.qos,
+                            message.retain
+                        )
+                    debuglog(4, "SQL exec: '{}'".format(sql))
+                    cursor.execute(sql)
+                elif self._args.sql_type == 'sqlite':
+                    # strtime=str(time.strftime("%Y-%m-%d %H:%M:%S"))
+                    sql1 = "INSERT OR IGNORE INTO `{0}` \
+                            (ts,topic,value,qos,retain) \
+                            VALUES('{1}','{2}','{3}','{4}','{5}')"\
+                        .format(
+                            self._args.sql_table,
+                            timestamp,
+                            message.topic,
+                            payload,
+                            message.qos,
+                            message.retain
+                        )
+                    sql2 = "UPDATE `{0}` \
+                            SET ts='{1}', \
+                                value='{3}', \
+                                qos='{4}', \
+                                retain='{5}' \
+                            WHERE topic='{2}'"\
+                        .format(
+                            self._args.sql_table,
+                            timestamp,
+                            message.topic,
+                            payload,
+                            message.qos,
+                            message.retain
+                        )
+                    sql = sql1 + '\n' + sql2
+                    debuglog(4, "SQL exec: '{}'".format(sql))
+                    try:
+                        cursor.execute(sql1)
+                        cursor.execute(sql2)
+                    except sqlite3.OperationalError as err:
+                        EXIT_CODE = ExitCode.SQL_CONNECTION_ERROR
+                        sys.exit(EXIT_CODE)
+
+                db_connection.commit()
+                debuglog(1, "[{}]: SQL success: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(threading.get_ident(), self._args.sql_table, message.topic, payload, message.qos, message.retain))
+                transaction_retry = 0
+
+            except MySQLdb.Error as err:    # pylint: disable=no-member
+                sql_execute_exception(
+                    err.args[0] in [1040, 1205, 1213],
+                    "[{}]: {}".format(err.args[0], err.args[1])
+                    )
+            except sqlite3.Error as err:
+                sql_execute_exception(
+                    "database is locked" in str(err).lower(),
+                    err
+                    )
+
+            finally:
+                cursor.close()
+
+        db_connection.close()
+        self.pool_sqlconnections.release()
+
+    def on_connect(self, client, userdata, message, return_code):
+        """
+        Called when the broker responds to our connection request.
+
+        @param client:
+            the client instance for this callback
+        @param userdata:
+            the private user data as set in Client() or userdata_set()
+        @param message:
+            response message sent by the broker
+        @param return_code:
+            the connection result
+        """
+        debuglog(1, "MQTT on_connect({},{},{},{}): {}".format(client, userdata, message, return_code, mqtt.error_string(return_code)))
+        for topic in self._args.mqtt_topic:
+            debuglog(1, "subscribe to topic {}".format(topic))
+            client.subscribe(topic, 0)
+
+    def on_message(self, client, userdata, message):
+        """
+        Called when a message has been received on a topic that the client subscribes to.
+        This callback will be called for every message received.
+
+        @param client:
+            the client instance for this callback
+        @param userdata:
+            the private user data as set in Client() or userdata_set()
+        @param message:
+            an instance of MQTTMessage.
+            This is a class with members topic, payload, qos, retain.
+        """
+        global EXIT_CODE    # pylint: disable=global-statement
+
+        if EXIT_CODE != ExitCode.OK:
+            sys.exit(EXIT_CODE)
+        if verbose_level() > 0:
+            log('{} {} [QOS {} Retain {}]'.format(message.topic, message.payload, message.qos, message.retain))
+
+        debuglog(2, "on_message({},{},{})".format(client, userdata, message))
+        if EXIT_CODE == ExitCode.OK:
+            self.pool_sqlconnections.acquire()
+            self.write2sql_thread = Thread(target=self.write2sql, args=(message,))
+            self.write2sql_thread.start()
+
+    def on_publish(self, client, userdata, mid):
+        """
+        Called when a message that was to be sent using the publish() call
+        has completed transmission to the broker.
+        For messages with QoS levels 1 and 2, this means that the appropriate
+        handshakes have completed. For QoS 0, this simply means that the
+        message has left the client. The mid variable matches the mid
+        variable returned from the corresponding publish() call, to allow
+        outgoing messages to be tracked.
+
+        @param client:
+            the client instance for this callback
+        @param userdata:
+            the private user data as set in Client() or userdata_set()
+        @param mid:
+            matches the mid variable returned from the corresponding
+            publish() call, to allow outgoing messages to be tracked.
+        """
+        debuglog(2, "on_publish({},{},{})".format(client, userdata, mid))
+
+    def on_subscribe(self, client, userdata, mid, granted_qos):
+        """
+        Called when the broker responds to a subscribe request.
+
+        @param client:
+            the client instance for this callback
+        @param userdata:
+            the private user data as set in Client() or userdata_set()
+        @param mid:
+            Matches the mid variable returned from the corresponding
+            subscribe() call.
+        @param granted_qos:
+            a list of integers that give the QoS level the broker has
+            granted for each of the different subscription requests.
+        """
+        debuglog(2, "on_subscribe({},{},{},{})".format(client, userdata, mid, granted_qos))
+
+    def on_log(self, client, userdata, level, string):
+        """
+        Called when the client has log information.
+
+        @param client:
+            the client instance for this callback
+        @param userdata:
+            the private user data as set in Client() or userdata_set()
+        @param level:
+            gives the severity of the message and will be one of
+            MQTT_LOG_INFO, MQTT_LOG_NOTICE, MQTT_LOG_WARNING, MQTT_LOG_ERR,
+            and MQTT_LOG_DEBUG. The message itself is in string.
+        @param string:
+            The message itself
+        """
+        debuglog(2, "on_log({},{},{},{})".format(client, userdata, level, string))
+
+    def mqtt_connect(self, host, port, username=None, password=None, keepalive=60, cafile=None, certfile=None, keyfile=None, insecure=True, userdata=None):
+        """
+        Create MQTT client and set callback handler
+
+        @param host:
+            the hostname or IP address of the remote broker
+        @param port:
+            the network port of the server host to connect to
+        @param username:
+            username for broker authentication
+        @param password:
+            password for broker authentication
+        @param keepalive:
+            maximum period in seconds allowed between communications with the broker
+        @param cafile:
+            a string path to the Certificate Authority certificate files that are to be treated as trusted by this client
+        @param certfile:
+            strings pointing to the PEM encoded client certificate
+        @param keyfile:
+            strings pointing to the PEM encoded private keys
+        @param insecure:
+            verification of the server hostname in the server certificate if True
+        @param userdata:
+            private user data that will be passed to callbacks
+
+        @returns
+            mqttc:  MQTT client handle (or None on error)
+            ret:    Error code
+        """
+        mqttc = mqtt.Client('{}-{:d}'.format(SCRIPTNAME, os.getpid()), clean_session=True, userdata=userdata)
+        if debug_level() > 0:
+            if debug_level() <= 2:
+                logging.basicConfig(level=logging.WARNING)
+            elif debug_level() <= 3:
+                logging.basicConfig(level=logging.INFO)
+            elif debug_level() >= 4:
+                logging.basicConfig(level=logging.DEBUG)
+            logger = logging.getLogger(__name__)
+            mqttc.enable_logger(logger)
+        mqttc.on_connect = self.on_connect
+        mqttc.on_message = self.on_message
+        mqttc.on_publish = self.on_publish
+        mqttc.on_subscribe = self.on_subscribe
+        if debug_level() > 0:
+            mqttc.on_log = self.on_log
+
+        # cafile controls TLS usage
+        if cafile is not None:
+            if certfile is not None and keyfile is not None:
+                mqttc.tls_set(cafile,
+                              certfile=certfile,
+                              keyfile=keyfile,
+                              cert_reqs=ssl.CERT_REQUIRED)
+            else:
+                mqttc.tls_set(cafile, cert_reqs=ssl.CERT_REQUIRED)
+            mqttc.tls_insecure_set(insecure)
+
+        # username & password may be None
+        if username is not None:
+            mqttc.username_pw_set(username, password)
+
+        debuglog(1, "mqttc.connect({}, {}, {})".format(host, port, keepalive))
+        try:
+            res = mqttc.connect(host, port, keepalive)
+            debuglog(1, "mqttc.connect() returns {}".format(res))
+        except Exception as err:    # pylint: disable=broad-except,unused-variable
+            return None, ExitCode.MQTT_CONNECTION_ERROR
+
+        return mqttc, ExitCode.OK
+
+    def loop_forever(self):
+        """
+        Main MQTT to SQL loop
+        does not return until an error occurs
+        """
+        global EXIT_CODE    # pylint: disable=global-statement
+
+        while True:
+            # Main loop as long as no error occurs
+            ret = mqtt.MQTT_ERR_SUCCESS
+            while not self.userdata['haveresponse'] and ret == mqtt.MQTT_ERR_SUCCESS:
+                try:
+                    ret = self.mqttc.loop()
+                except Exception as err:    # pylint: disable=broad-except
+                    log('ERROR: loop() - {}'.format(err))
+                    time.sleep(0.1)
+                if EXIT_CODE != ExitCode.OK:
+                    sys.exit(EXIT_CODE)
+            if ret not in (
+                    mqtt.MQTT_ERR_AGAIN,
+                    mqtt.MQTT_ERR_PROTOCOL,
+                    mqtt.MQTT_ERR_INVAL,
+                    mqtt.MQTT_ERR_NO_CONN,
+                    mqtt.MQTT_ERR_CONN_REFUSED,
+                    mqtt.MQTT_ERR_NOT_FOUND,
+                    mqtt.MQTT_ERR_TLS,
+                    mqtt.MQTT_ERR_PAYLOAD_SIZE,
+                    mqtt.MQTT_ERR_NOT_SUPPORTED,
+                    mqtt.MQTT_ERR_AUTH,
+                    mqtt.MQTT_ERR_ERRNO):
+                # disconnect from server
+                log('MQTT disconnected - [{}] {})'.format(ret, mqtt.error_string(ret)))
+                try:
+                    ret = self.mqttc.reconnect()
+                    log('MQTT reconnected - [{}] {})'.format(ret, mqtt.error_string(ret)))
+                except Exception as err:    # pylint: disable=broad-except
+                    SignalHandler.exitus(ExitCode.MQTT_CONNECTION_ERROR, '{}:{} failed - [{}] {}'.format(self._args.mqtt_host, self._args.mqtt_port, ret, mqtt.error_string(err)))
+            else:
+                SignalHandler.exitus(ExitCode.MQTT_CONNECTION_ERROR, '{}:{} failed: - [{}] {}'.format(self._args.mqtt_host, self._args.mqtt_port, ret, mqtt.error_string(ret)))
+
+class SignalHandler:
+    """
+    Signal Handler Class
+    """
+    def __init__(self):
+        signal.signal(signal.SIGINT, self._exitus)
+        signal.signal(signal.SIGTERM, self._exitus)
+
+    def _signalname(self, signal_):
+        signals_ = dict((k, v) for v, k in reversed(sorted(signal.__dict__.items())) if v.startswith('SIG') and not v.startswith('SIG_'))
+        return signals_.get(signal_, 'UNKNOWN')
+
+    def _exitus(self, signal_, frame_):   # pylint: disable=unused-argument
+        """
+        local exit with logging
+        """
+        self.exitus(signal_, 'signal {}#{}'.format(self._signalname(signal_), signal_))
+
+    def exitus(self, status=0, message="end"):
+        """
+        Called when the program should be exit
+
+        @param status:
+            the exit status program returns to callert
+        @param message:
+            the message logged before exit
+        """
+        # pylint: disable=global-statement
+        global SCRIPTNAME
+        global SCRIPTPID
+        global VER
+        # pylint: enable=global-statement
+        if message is not None:
+            log(message)
+        log('{}[{}] v{} end'.format(SCRIPTNAME, SCRIPTPID, VER))
+        try:
+            sys.exit(status)
+        except: # pylint: disable=bare-except
+            os.kill(os.getpid(), signal.SIGQUIT)
+
 if __name__ == "__main__":
     # set signal handler
     SIG = SignalHandler()
@@ -673,104 +849,13 @@ if __name__ == "__main__":
     ARGS = parseargs()
 
     # Log program start
-    log('{} v{} start'.format(SCRIPTNAME, VER))
+    log('{}[{}] v{} start'.format(SCRIPTNAME, SCRIPTPID, VER))
 
-    if ARGS.verbose is not None and ARGS.verbose > 0:
-        log('  MQTT server: {}:{} {}{} keepalive {}'.format(ARGS.mqtt_host, ARGS.mqtt_port, 'SSL' if (ARGS.mqtt_cafile is not None) else '', ' (suppress TLS verification)' if ARGS.mqtt_insecure else '', ARGS.mqtt_keepalive))
-        log('       user:   {}'.format(ARGS.mqtt_username))
-        log('       topics: {}'.format(ARGS.mqtt_topic))
-        log('  SQL  type:   {}'.format(SQLTYPES[ARGS.sql_type]))
-        log('       server: {}:{} [max {} connections]'.format(ARGS.sql_host, ARGS.sql_port, ARGS.sql_max_connection))
-        log('       db:     {}'.format(ARGS.sql_db))
-        log('       table:  {}'.format(ARGS.sql_table))
-        log('       user:   {}'.format(ARGS.sql_username))
-        if ARGS.logfile is not None:
-            log('  Log file:    {}'.format(ARGS.logfile))
-        if ARGS.debug is not None and ARGS.debug > 0:
-            log('  Debug level: {}'.format(ARGS.debug))
-        if ARGS.verbose is not None and ARGS.verbose > 0:
-            log('  Verbose level: {}'.format(ARGS.verbose))
+    # print possible verbose info
+    if verbose_level() > 0:
+        verbose_print(ARGS)
 
-    POOL_SQLCONNECTIONS = BoundedSemaphore(value=ARGS.sql_max_connection)
-
-    # Create MQTT client and set callback handler
-    USERDATA = {
-        'haveresponse' : False,
-        'starttime'    : time.time(),
-    }
-    MQTTC = mqtt.Client('{}-{:d}'.format(SCRIPTNAME, os.getpid()), clean_session=True, userdata=USERDATA)
-    if ARGS.debug is not None and ARGS.debug > 0:
-        if ARGS.debug == 1:
-            logging.basicConfig(level=logging.INFO)
-        elif ARGS.debug == 2:
-            logging.basicConfig(level=logging.WARNING)
-        elif ARGS.debug == 3:
-            logging.basicConfig(level=logging.DEBUG)
-        elif ARGS.debug >= 4:
-            logging.basicConfig(level=logging.DEBUG)
-        LOGGER = logging.getLogger(__name__)
-        MQTTC.enable_logger(LOGGER)
-    MQTTC.on_connect = on_connect
-    MQTTC.on_message = on_message
-    MQTTC.on_publish = on_publish
-    MQTTC.on_subscribe = on_subscribe
-    MQTTC.on_log = on_log
-
-    # cafile controls TLS usage
-    if ARGS.mqtt_cafile is not None:
-        if ARGS.mqtt_certfile is not None:
-            MQTTC.tls_set(
-                ca_certs=ARGS.mqtt_cafile,
-                certfile=ARGS.mqtt_certfile,
-                keyfile=ARGS.mqtt_keyfile,
-                cert_reqs=ssl.CERT_REQUIRED
-            )
-        else:
-            MQTTC.tls_set(ARGS.mqtt_cafile, cert_reqs=ssl.CERT_REQUIRED)
-        MQTTC.tls_insecure_set(ARGS.mqtt_insecure)
-
-    # username & password may be None
-    if ARGS.mqtt_username is not None:
-        MQTTC.username_pw_set(ARGS.mqtt_username, ARGS.mqtt_password)
-
-    # Attempt to connect to broker. If this fails, issue CRITICAL
-    debuglog(1, "MQTTC.connect({}, {}, {})".format(ARGS.mqtt_host, ARGS.mqtt_port, ARGS.mqtt_keepalive))
-    RETURN_CODE = mqtt.MQTT_ERR_UNKNOWN
-    try:
-        RETURN_CODE = MQTTC.connect(ARGS.mqtt_host, ARGS.mqtt_port, ARGS.mqtt_keepalive)
-        debuglog(1, "MQTTC.connect() returns {}".format(RETURN_CODE))
-    except Exception as err:    # pylint: disable=broad-except
-        exit_(ExitCode.MQTT_CONNECTION_ERROR, '{}:{} failed - [{}] {} - "{}"'.format(ARGS.mqtt_host, ARGS.mqtt_port, RETURN_CODE, mqtt.error_string(RETURN_CODE), err))
-
-    while True:
-        # Main loop as long as no error occurs
-        RETURN_CODE = mqtt.MQTT_ERR_SUCCESS
-        while not USERDATA['haveresponse'] and RETURN_CODE == mqtt.MQTT_ERR_SUCCESS:
-            try:
-                RETURN_CODE = MQTTC.loop()
-            except Exception as err:    # pylint: disable=broad-except
-                log('ERROR: loop() - {}'.format(err))
-                time.sleep(0.25)
-            if EXIT_CODE != ExitCode.OK:
-                sys.exit(EXIT_CODE)
-        if RETURN_CODE not in (
-                mqtt.MQTT_ERR_AGAIN,
-                mqtt.MQTT_ERR_PROTOCOL,
-                mqtt.MQTT_ERR_INVAL,
-                mqtt.MQTT_ERR_NO_CONN,
-                mqtt.MQTT_ERR_CONN_REFUSED,
-                mqtt.MQTT_ERR_NOT_FOUND,
-                mqtt.MQTT_ERR_TLS,
-                mqtt.MQTT_ERR_PAYLOAD_SIZE,
-                mqtt.MQTT_ERR_NOT_SUPPORTED,
-                mqtt.MQTT_ERR_AUTH,
-                mqtt.MQTT_ERR_ERRNO):
-            # disconnect from server
-            log('MQTT disconnected - [{}] {})'.format(RETURN_CODE, mqtt.error_string(RETURN_CODE)))
-            try:
-                RETURN_CODE = MQTTC.reconnect()
-                log('MQTT reconnected - [{}] {})'.format(RETURN_CODE, mqtt.error_string(RETURN_CODE)))
-            except Exception as err:    # pylint: disable=broad-except
-                exit_(ExitCode.MQTT_CONNECTION_ERROR, '{}:{} failed - [{}] {}'.format(ARGS.mqtt_host, ARGS.mqtt_port, RETURN_CODE, mqtt.error_string(err)))
-        else:
-            exit_(ExitCode.MQTT_CONNECTION_ERROR, '{}:{} failed: - [{}] {}'.format(ARGS.mqtt_host, ARGS.mqtt_port, RETURN_CODE, mqtt.error_string(RETURN_CODE)))
+    # Create class
+    MQTT2SQL = Mqtt2Sql(ARGS)
+    # run loop
+    MQTT2SQL.loop_forever()
