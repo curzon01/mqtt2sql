@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.4.0039'
+VER = '2.4.0040'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -349,7 +349,10 @@ def verbose_print(_args):
     log(1, '       user:   {}'.format(_args.mqtt_username))
     log(1, '       topics: {}'.format(_args.mqtt_topic))
     log(1, '  SQL  type:   {}'.format(SQLTYPES[_args.sql_type]))
-    log(1, '       server: {}:{} [max {} connections]'.format(_args.sql_host, _args.sql_port, _args.sql_max_connection))
+    if issocket(_args.sql_host):
+        log(1, '       server: {} [max {} connections]'.format(_args.sql_host, _args.sql_max_connection))
+    else:
+        log(1, '       server: {}:{} [max {} connections]'.format(_args.sql_host, _args.sql_port, _args.sql_max_connection))
     log(1, '       db:     {}'.format(_args.sql_db))
     log(1, '       table:  {}'.format(_args.sql_table))
     log(1, '       user:   {}'.format(_args.sql_username))
@@ -410,6 +413,18 @@ def debuglog(dbglevel, msg):
     """
     if debug_level() > dbglevel:
         log(0, msg)
+
+def issocket(name):
+    """
+    Simple check if name is a socket name
+
+    @param name:
+        name to check
+
+    return True if name is a socket name
+    """
+    nametype = re.search(r'^(\/\S*)*', name)
+    return nametype is not None and nametype.group(0) == name
 
 class Mqtt2Sql:
     """
@@ -497,9 +512,7 @@ class Mqtt2Sql:
             try:
                 if self._args.sql_type == 'mysql':
                     connection = {'db': self._args.sql_db}
-                    # test for unix socket name
-                    hosttype = re.search(r'^(\/\S*)*', self._args.sql_host)
-                    if hosttype is not None and hosttype.group(0) == self._args.sql_host:
+                    if issocket(self._args.sql_host):
                         connection['unix_socket'] = self._args.sql_host
                     else:
                         connection['host'] = self._args.sql_host
