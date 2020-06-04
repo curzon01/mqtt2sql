@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.3.0036'
+VER = '2.3.0037'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -345,20 +345,19 @@ def verbose_print(_args):
     @param _args:
         result from configargparse.parse_args()
     """
-    log('  MQTT server: {}:{} {}{} keepalive {}'.format(_args.mqtt_host, _args.mqtt_port, 'SSL' if (_args.mqtt_cafile is not None) else '', ' (suppress TLS verification)' if _args.mqtt_insecure else '', _args.mqtt_keepalive))
-    log('       user:   {}'.format(_args.mqtt_username))
-    log('       topics: {}'.format(_args.mqtt_topic))
-    log('  SQL  type:   {}'.format(SQLTYPES[_args.sql_type]))
-    log('       server: {}:{} [max {} connections]'.format(_args.sql_host, _args.sql_port, _args.sql_max_connection))
-    log('       db:     {}'.format(_args.sql_db))
-    log('       table:  {}'.format(_args.sql_table))
-    log('       user:   {}'.format(_args.sql_username))
+    log(1, '  MQTT server: {}:{} {}{} keepalive {}'.format(_args.mqtt_host, _args.mqtt_port, 'SSL' if (_args.mqtt_cafile is not None) else '', ' (suppress TLS verification)' if _args.mqtt_insecure else '', _args.mqtt_keepalive))
+    log(1, '       user:   {}'.format(_args.mqtt_username))
+    log(1, '       topics: {}'.format(_args.mqtt_topic))
+    log(1, '  SQL  type:   {}'.format(SQLTYPES[_args.sql_type]))
+    log(1, '       server: {}:{} [max {} connections]'.format(_args.sql_host, _args.sql_port, _args.sql_max_connection))
+    log(1, '       db:     {}'.format(_args.sql_db))
+    log(1, '       table:  {}'.format(_args.sql_table))
+    log(1, '       user:   {}'.format(_args.sql_username))
     if _args.logfile is not None:
-        log('  Log file:    {}'.format(_args.logfile))
+        log(1, '  Log file:    {}'.format(_args.logfile))
     if debug_level() > 0:
-        log('  Debug level: {}'.format(debug_level()))
-    if verbose_level() > 0:
-        log('  Verbose level: {}'.format(verbose_level()))
+        log(1, '  Debug level: {}'.format(debug_level()))
+    log(1, '  Verbose level: {}'.format(verbose_level()))
 
 def verbose_level():
     """
@@ -378,21 +377,23 @@ def debug_level():
         return ARGS.debug
     return 0
 
-def log(msg):
+def log(loglevel, msg):
     """
     Writes a message to stdout and optional logfile
+    if given loglevel is >= verbose_level()
 
     @param msg: message to output
     """
-    global ARGS   # pylint: disable=global-statement
-    strtime = str(time.strftime("%Y-%m-%d %H:%M:%S"))
-    # print strtime+': '+msg
-    if ARGS.logfile is not None:
-        filename = str(time.strftime(ARGS.logfile, time.localtime()))
-        logfile = open(filename, "a")
-        logfile.write(strtime+': '+msg+'\n')
-        logfile.close()
-    print(strtime+': '+msg)
+    if verbose_level() >= loglevel:
+        global ARGS   # pylint: disable=global-statement
+        strtime = str(time.strftime("%Y-%m-%d %H:%M:%S"))
+        # print strtime+': '+msg
+        if ARGS.logfile is not None:
+            filename = str(time.strftime(ARGS.logfile, time.localtime()))
+            logfile = open(filename, "a")
+            logfile.write(strtime+': '+msg+'\n')
+            logfile.close()
+        print(strtime+': '+msg)
 
 def debuglog(dbglevel, msg):
     """
@@ -408,7 +409,7 @@ def debuglog(dbglevel, msg):
     @param msg: message to output
     """
     if debug_level() > dbglevel:
-        log(msg)
+        log(0, msg)
 
 class Mqtt2Sql:
     """
@@ -416,6 +417,7 @@ class Mqtt2Sql:
     """
     def __init__(self, args_):
         self._args = args_
+        self.write2sql_thread = None
         self.pool_sqlconnections = BoundedSemaphore(value=self._args.sql_max_connection)
         self.userdata = {
             'haveresponse' : False,
@@ -466,11 +468,11 @@ class Mqtt2Sql:
             debuglog(1, "[{}]: {} transaction ERROR: {}, retry={}, delay={}".format(threading.get_ident(), typestr, error_str, transaction_retry, transaction_delay))
             if retry_condition:
                 transaction_retry -= 1
-                log("SQL transaction NOTE: {} - try retry".format(err))
+                log(1, "SQL transaction NOTE: {} - try retry".format(err))
                 time.sleep(transaction_delay)
             else:
-                log("{} transaction ERROR {}".format(typestr, error_str))
-                log("{} give up: {}".format(typestr, sql))
+                log(0, "{} transaction ERROR {}".format(typestr, error_str))
+                log(1, "{} give up: {}".format(typestr, sql))
                 # Rollback in case there is any error
                 db_connection.rollback()
                 transaction_retry = 0
@@ -505,7 +507,7 @@ class Mqtt2Sql:
                 connection_retry -= 1
                 debuglog(1, "[{}]: SQL connection ERROR: {}, retry={}, delay={}".format(threading.get_ident(), SQLTYPES[self._args.sql_type], connection_retry, connection_delay))
                 if connection_retry > 0:
-                    log("SQL connection NOTE: {} - try retry".format(err))
+                    log(1, "SQL connection NOTE: {} - try retry".format(err))
                     time.sleep(connection_delay)
                     connection_delay += connection_delay_base
                 else:
@@ -628,8 +630,7 @@ class Mqtt2Sql:
 
         if EXIT_CODE != ExitCode.OK:
             sys.exit(EXIT_CODE)
-        if verbose_level() > 0:
-            log('{} {} [QOS {} Retain {}]'.format(message.topic, message.payload, message.qos, message.retain))
+        log(2, '{} {} [QOS {} Retain {}]'.format(message.topic, message.payload, message.qos, message.retain))
 
         debuglog(2, "on_message({},{},{})".format(client, userdata, message))
         if EXIT_CODE == ExitCode.OK:
@@ -775,7 +776,7 @@ class Mqtt2Sql:
                 try:
                     ret = self.mqttc.loop()
                 except Exception as err:    # pylint: disable=broad-except
-                    log('ERROR: loop() - {}'.format(err))
+                    log(0, 'ERROR: loop() - {}'.format(err))
                     time.sleep(0.1)
                 if EXIT_CODE != ExitCode.OK:
                     sys.exit(EXIT_CODE)
@@ -792,10 +793,10 @@ class Mqtt2Sql:
                     mqtt.MQTT_ERR_AUTH,
                     mqtt.MQTT_ERR_ERRNO):
                 # disconnect from server
-                log('MQTT disconnected - [{}] {})'.format(ret, mqtt.error_string(ret)))
+                log(0, 'Remote disconnected from MQTT - [{}] {})'.format(ret, mqtt.error_string(ret)))
                 try:
                     ret = self.mqttc.reconnect()
-                    log('MQTT reconnected - [{}] {})'.format(ret, mqtt.error_string(ret)))
+                    log(0, 'MQTT reconnected - [{}] {})'.format(ret, mqtt.error_string(ret)))
                 except Exception as err:    # pylint: disable=broad-except
                     SignalHandler.exitus(ExitCode.MQTT_CONNECTION_ERROR, '{}:{} failed - [{}] {}'.format(self._args.mqtt_host, self._args.mqtt_port, ret, mqtt.error_string(err)))
             else:
@@ -834,8 +835,8 @@ class SignalHandler:
         global VER
         # pylint: enable=global-statement
         if message is not None:
-            log(message)
-        log('{}[{}] v{} end'.format(SCRIPTNAME, SCRIPTPID, VER))
+            log(1, message)
+        log(0, '{}[{}] v{} end'.format(SCRIPTNAME, SCRIPTPID, VER))
         try:
             sys.exit(status)
         except: # pylint: disable=bare-except
@@ -849,11 +850,10 @@ if __name__ == "__main__":
     ARGS = parseargs()
 
     # Log program start
-    log('{}[{}] v{} start'.format(SCRIPTNAME, SCRIPTPID, VER))
+    log(0, '{}[{}] v{} start'.format(SCRIPTNAME, SCRIPTPID, VER))
 
     # print possible verbose info
-    if verbose_level() > 0:
-        verbose_print(ARGS)
+    verbose_print(ARGS)
 
     # Create class
     MQTT2SQL = Mqtt2Sql(ARGS)
