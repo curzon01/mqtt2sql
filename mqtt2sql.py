@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.3.0037'
+VER = '2.3.0038'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -837,10 +837,9 @@ class SignalHandler:
         if message is not None:
             log(1, message)
         log(0, '{}[{}] v{} end'.format(SCRIPTNAME, SCRIPTPID, VER))
-        try:
-            sys.exit(status)
-        except: # pylint: disable=bare-except
-            os.kill(os.getpid(), signal.SIGQUIT)
+        if status in (signal.SIGINT, signal.SIGTERM):
+            status = 0
+        sys.exit(status)
 
 if __name__ == "__main__":
     # set signal handler
