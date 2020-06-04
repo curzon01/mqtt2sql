@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.3.0038'
+VER = '2.4.0039'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -61,8 +61,8 @@ try:
     import signal
     import logging
     import configargparse
-    import threading
-    from threading import Thread, BoundedSemaphore
+    import re
+    from threading import get_ident, Thread, BoundedSemaphore
     from random import random
 except ImportError as err:
     module_import_error(err)
@@ -243,10 +243,10 @@ def parseargs():
     sql_group.add_argument('--sqltype', dest='sql_type', choices=sql_choices, help=configargparse.SUPPRESS)
     sql_group.add_argument(
         '--sql-host',
-        metavar='<host>',
+        metavar='<hostname>|<socket>',
         dest='sql_host',
         default=DEFAULTS['sql-host'],
-        help="host to connect (default '{}')".format(DEFAULTS['sql-host']))
+        help="hostname or unix socket to connect (default '{}')".format(DEFAULTS['sql-host']))
     sql_group.add_argument('--sqlhost', dest='sql_host', help=configargparse.SUPPRESS)
     sql_group.add_argument(
         '--sql-port',
@@ -254,7 +254,7 @@ def parseargs():
         dest='sql_port',
         type=int,
         default=DEFAULTS['sql-port'],
-        help="port to connect (default {})".format(DEFAULTS['sql-port']))
+        help="port to connect (default {}, ignored when unix socket is defined)".format(DEFAULTS['sql-port']))
     sql_group.add_argument('--sqlport', dest='sql_port', type=int, help=configargparse.SUPPRESS)
     sql_group.add_argument(
         '--sql-username',
@@ -465,7 +465,7 @@ class Mqtt2Sql:
 
             transaction_delay = random()
             transaction_delay *= 2
-            debuglog(1, "[{}]: {} transaction ERROR: {}, retry={}, delay={}".format(threading.get_ident(), typestr, error_str, transaction_retry, transaction_delay))
+            debuglog(1, "[{}]: {} transaction ERROR: {}, retry={}, delay={}".format(get_ident(), typestr, error_str, transaction_retry, transaction_delay))
             if retry_condition:
                 transaction_retry -= 1
                 log(1, "SQL transaction NOTE: {} - try retry".format(err))
@@ -496,21 +496,38 @@ class Mqtt2Sql:
                 sys.exit(0)
             try:
                 if self._args.sql_type == 'mysql':
-                    if self._args.sql_username is not None and self._args.sql_password is not None:
-                        db_connection = MySQLdb.connect(self._args.sql_host, self._args.sql_username, self._args.sql_password, self._args.sql_db)
+                    connection = {'db': self._args.sql_db}
+                    # test for unix socket name
+                    hosttype = re.search(r'^(\/\S*)*', self._args.sql_host)
+                    if hosttype is not None and hosttype.group(0) == self._args.sql_host:
+                        connection['unix_socket'] = self._args.sql_host
                     else:
-                        db_connection = MySQLdb.connect(self._args.sql_host)
+                        connection['host'] = self._args.sql_host
+                        if self._args.sql_port is not None:
+                            connection['port'] = self._args.sql_port
+                    if self._args.sql_username is not None:
+                        connection['user'] = self._args.sql_username
+                    if self._args.sql_password is not None:
+                        connection['passwd'] = self._args.sql_password
+                    db_connection = MySQLdb.connect(**connection)
                 elif self._args.sql_type == 'sqlite':
                     db_connection = sqlite3.connect(self._args.sql_db)
                 connection_retry = 0
             except Exception as err:    # pylint: disable=broad-except
                 connection_retry -= 1
-                debuglog(1, "[{}]: SQL connection ERROR: {}, retry={}, delay={}".format(threading.get_ident(), SQLTYPES[self._args.sql_type], connection_retry, connection_delay))
+                try:
+                    error_code = err.args[0]
+                except:     # pylint: disable=bare-except
+                    error_code = 0
+                if error_code == 2005:
+                    connection_retry = 0
+                debuglog(1, "[{}]: SQL connection ERROR: {}, retry={}, delay={}".format(get_ident(), SQLTYPES[self._args.sql_type], connection_retry, connection_delay))
                 if connection_retry > 0:
                     log(1, "SQL connection NOTE: {} - try retry".format(err))
                     time.sleep(connection_delay)
                     connection_delay += connection_delay_base
                 else:
+                    log(1, "SQL connection ERROR: {} - give up".format(err))
                     os.kill(os.getpid(), signal.SIGTERM)
                     SignalHandler.exitus(ExitCode.SQL_CONNECTION_ERROR, "SQL connection ERROR: {} - give up".format(err))
 
@@ -575,7 +592,7 @@ class Mqtt2Sql:
                         sys.exit(EXIT_CODE)
 
                 db_connection.commit()
-                debuglog(1, "[{}]: SQL success: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(threading.get_ident(), self._args.sql_table, message.topic, payload, message.qos, message.retain))
+                debuglog(1, "[{}]: SQL success: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(get_ident(), self._args.sql_table, message.topic, payload, message.qos, message.retain))
                 transaction_retry = 0
 
             except MySQLdb.Error as err:    # pylint: disable=no-member
