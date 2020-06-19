@@ -28,6 +28,7 @@ Usage:
 CREATE schema IF NOT EXISTS mqtt;
 USE mqtt;
 
+DROP TRIGGER IF EXISTS `mqtt_before_insert`;
 DROP TRIGGER IF EXISTS `mqtt_after_insert`;
 DROP TRIGGER IF EXISTS `mqtt_after_update`;
 DROP VIEW IF EXISTS `mqtt_history_view`;
@@ -61,6 +62,17 @@ CREATE TABLE IF NOT EXISTS `mqtt_history` (
 	INDEX `ts` (`ts`),
 	CONSTRAINT `FK_mqtt_history_mqtt` FOREIGN KEY (`topicid`) REFERENCES `mqtt` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+DELIMITER //
+CREATE TRIGGER IF NOT EXISTS `mqtt_before_insert` BEFORE INSERT ON `mqtt` FOR EACH ROW BEGIN
+    DECLARE new_id INTEGER;
+
+    SET new_id=(select max(id)+1 from mqtt);
+    IF NEW.id != new_id THEN
+        SET NEW.id = new_id;
+    END IF;
+END//
+DELIMITER ;
 
 DELIMITER //
 CREATE TRIGGER IF NOT EXISTS `mqtt_after_insert` AFTER INSERT ON `mqtt` FOR EACH ROW BEGIN
