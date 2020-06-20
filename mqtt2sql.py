@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.4.0040'
+VER = '2.4.0041'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -451,7 +451,7 @@ class Mqtt2Sql:
             userdata=self.userdata
             )
         if ret != ExitCode.OK:
-            SignalHandler.exitus(ret, '{}:{} failed - [{}] {} - "{}"'.format(self._args.mqtt_host, self._args.mqtt_port, ret, mqtt.error_string(ret), err))
+            SignalHandler.exitus(ret, '{}:{} failed - [{}] {}'.format(self._args.mqtt_host, self._args.mqtt_port, ret, mqtt.error_string(ret)))
 
     def write2sql(self, message):
         """
@@ -751,7 +751,7 @@ class Mqtt2Sql:
             mqttc:  MQTT client handle (or None on error)
             ret:    Error code
         """
-        mqttc = mqtt.Client('{}-{:d}'.format(SCRIPTNAME, os.getpid()), clean_session=True, userdata=userdata)
+        mqttc = mqtt.Client('{}-{:d}'.format(SCRIPTNAME, os.getpid()), clean_session=True, userdata=userdata, protocol=mqtt.MQTTv31)
         if debug_level() > 0:
             if debug_level() <= 2:
                 logging.basicConfig(level=logging.WARNING)
