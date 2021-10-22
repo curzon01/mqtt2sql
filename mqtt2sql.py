@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.4.0041'
+VER = '2.4.0042'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -483,14 +483,17 @@ class Mqtt2Sql:
             debuglog(1, "[{}]: {} transaction ERROR: {}, retry={}, delay={}".format(get_ident(), typestr, error_str, transaction_retry, transaction_delay))
             if retry_condition:
                 transaction_retry -= 1
-                log(1, "SQL transaction NOTE: {} - try retry".format(err))
+                log(1, "SQL transaction WARNING: {} - try retry".format(err))
                 time.sleep(transaction_delay)
             else:
                 log(0, "{} transaction ERROR {}".format(typestr, error_str))
                 log(1, "{} give up: {}".format(typestr, sql))
-                # Rollback in case there is any error
-                db_connection.rollback()
-                transaction_retry = 0
+                # try rollback in case there is any error
+                try:
+                    db_connection.rollback()
+                    transaction_retry = 0
+                except Exception as err:    # pylint: disable=broad-except
+                    pass
 
         # pylint: disable=global-statement
         global EXIT_CODE
@@ -523,9 +526,11 @@ class Mqtt2Sql:
                     if self._args.sql_password is not None:
                         connection['passwd'] = self._args.sql_password
                     db_connection = MySQLdb.connect(**connection)
+
                 elif self._args.sql_type == 'sqlite':
                     db_connection = sqlite3.connect(self._args.sql_db)
                 connection_retry = 0
+
             except Exception as err:    # pylint: disable=broad-except
                 connection_retry -= 1
                 try:
@@ -536,7 +541,7 @@ class Mqtt2Sql:
                     connection_retry = 0
                 debuglog(1, "[{}]: SQL connection ERROR: {}, retry={}, delay={}".format(get_ident(), SQLTYPES[self._args.sql_type], connection_retry, connection_delay))
                 if connection_retry > 0:
-                    log(1, "SQL connection NOTE: {} - try retry".format(err))
+                    log(1, "SQL connection WARNING: {} - try retry".format(err))
                     time.sleep(connection_delay)
                     connection_delay += connection_delay_base
                 else:
@@ -613,6 +618,7 @@ class Mqtt2Sql:
                     err.args[0] in [1040, 1205, 1213],
                     "[{}]: {}".format(err.args[0], err.args[1])
                     )
+
             except sqlite3.Error as err:
                 sql_execute_exception(
                     "database is locked" in str(err).lower(),
@@ -621,6 +627,9 @@ class Mqtt2Sql:
 
             finally:
                 cursor.close()
+                db_connection.close()
+                self.pool_sqlconnections.release()
+                return
 
         db_connection.close()
         self.pool_sqlconnections.release()
