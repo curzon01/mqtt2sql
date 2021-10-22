@@ -483,7 +483,7 @@ class Mqtt2Sql:
             debuglog(1, "[{}]: {} transaction ERROR: {}, retry={}, delay={}".format(get_ident(), typestr, error_str, transaction_retry, transaction_delay))
             if retry_condition:
                 transaction_retry -= 1
-                log(1, "SQL transaction WARNING: {} - try retry".format(err))
+                log(1, "SQL transaction WARNING: {} - try retry".format(error_str))
                 time.sleep(transaction_delay)
             else:
                 log(0, "{} transaction ERROR {}".format(typestr, error_str))
