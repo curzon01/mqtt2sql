@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.4.0042'
+VER = '2.4.43'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -104,6 +104,7 @@ DEFAULTS = {
     'mqtt-keyfile': None,
     'mqtt-insecure': False,
     'mqtt-keepalive': 60,
+    'mqtt-connect-timeout':500,
 
     'sql-type': 'mysql' if MODULE_MYSQLDB_AVAIL else ('sqlite' if MODULE_SQLITE3_AVAIL else None),
     'sql-host': 'localhost',
@@ -223,6 +224,13 @@ def parseargs():
         default=DEFAULTS['mqtt-keepalive'],
         help="keepalive timeout for the client (default {})".format(DEFAULTS['mqtt-keepalive']))
     mqtt_group.add_argument('--keepalive', dest='mqtt_keepalive', type=int, help=configargparse.SUPPRESS)
+    mqtt_group.add_argument(
+        '--mqtt-connect-timeout',
+        metavar='<ms>',
+        dest='mqtt_connect_timeout',
+        type=int,
+        default=DEFAULTS['mqtt-connect-timeout'],
+        help="timeout for the client mqtt connection (default {})".format(DEFAULTS['mqtt-connect-timeout']))
 
     sql_group = parser.add_argument_group('SQL Options')
     sql_choices = []
@@ -432,6 +440,8 @@ class Mqtt2Sql:
     """
     def __init__(self, args_):
         self._args = args_
+        self.connected = False
+        self.connect_rc = 0
         self.write2sql_thread = None
         self.pool_sqlconnections = BoundedSemaphore(value=self._args.sql_max_connection)
         self.userdata = {
@@ -444,6 +454,7 @@ class Mqtt2Sql:
             username=self._args.mqtt_username,
             password=self._args.mqtt_password,
             keepalive=self._args.mqtt_keepalive,
+            connect_timeout=self._args.mqtt_connect_timeout,
             cafile=self._args.mqtt_cafile,
             certfile=self._args.mqtt_certfile,
             keyfile=self._args.mqtt_keyfile,
@@ -634,6 +645,15 @@ class Mqtt2Sql:
         db_connection.close()
         self.pool_sqlconnections.release()
 
+    def wait_for_connect(self, connect_timeout):
+        timeout = connect_timeout/10
+        while not self.connected and timeout > 0:
+            time.sleep(0.01)
+            timeout = timeout -1
+
+        debuglog(2, "MQTT wait_for_connect({}) returns {}".format(connect_timeout, 0 != timeout))
+        return 0 != timeout
+
     def on_connect(self, client, userdata, message, return_code):
         """
         Called when the broker responds to our connection request.
@@ -648,9 +668,12 @@ class Mqtt2Sql:
             the connection result
         """
         debuglog(1, "MQTT on_connect({},{},{},{}): {}".format(client, userdata, message, return_code, mqtt.error_string(return_code)))
-        for topic in self._args.mqtt_topic:
-            debuglog(1, "subscribe to topic {}".format(topic))
-            client.subscribe(topic, 0)
+        self.connected = mqtt.MQTT_ERR_SUCCESS == return_code
+        self.connect_rc = return_code
+        if self.connected:
+            for topic in self._args.mqtt_topic:
+                debuglog(1, "subscribe to topic {}".format(topic))
+                client.subscribe(topic, 0)
 
     def on_message(self, client, userdata, message):
         """
@@ -731,7 +754,7 @@ class Mqtt2Sql:
         """
         debuglog(2, "on_log({},{},{},{})".format(client, userdata, level, string))
 
-    def mqtt_connect(self, host, port, username=None, password=None, keepalive=60, cafile=None, certfile=None, keyfile=None, insecure=True, userdata=None):
+    def mqtt_connect(self, host, port, username=None, password=None, keepalive=60, connect_timeout=500, cafile=None, certfile=None, keyfile=None, insecure=True, userdata=None):
         """
         Create MQTT client and set callback handler
 
@@ -745,6 +768,8 @@ class Mqtt2Sql:
             password for broker authentication
         @param keepalive:
             maximum period in seconds allowed between communications with the broker
+        @param connect_timeout:
+            timeout period in milliseconds for mqtt connection
         @param cafile:
             a string path to the Certificate Authority certificate files that are to be treated as trusted by this client
         @param certfile:
@@ -799,6 +824,11 @@ class Mqtt2Sql:
         except Exception as err:    # pylint: disable=broad-except,unused-variable
             return None, ExitCode.MQTT_CONNECTION_ERROR
 
+        mqttc.loop_start()      # Start loop to process on_connect()
+        if not self.wait_for_connect(connect_timeout):
+            return None, self.connect_rc
+        mqttc.loop_stop()       # Stop loop
+
         return mqttc, ExitCode.OK
 
     def loop_forever(self):
@@ -824,7 +854,7 @@ class Mqtt2Sql:
                 log(0, 'Remote disconnected from MQTT - [{}] {})'.format(ret, mqtt.error_string(ret)))
                 try:
                     ret = self.mqttc.reconnect()
-                    log(0, 'MQTT reconnected - [{}] {})'.format(ret, mqtt.error_string(ret)))
+                    log(0, 'MQTT reconnected - [{}] {}'.format(ret, mqtt.error_string(ret)))
                 except Exception as err:    # pylint: disable=broad-except
                     SignalHandler.exitus(ExitCode.MQTT_CONNECTION_ERROR, '{}:{} failed - [{}] {}'.format(self._args.mqtt_host, self._args.mqtt_port, ret, mqtt.error_string(err)))
             else:
