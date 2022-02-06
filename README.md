@@ -46,14 +46,14 @@ Install Pip, Paho MQTT and MySQLdb lib to your python environment use
 sudo apt-get install python3-pip python3-mysqldb python3-configargparse python3-paho-mqtt
 ```
 
-__Check__ that Python 3.x is installed e.g.
+**Check** that Python 3.x is installed e.g.
 
 ```bash
 $ python3 --version
 Python 3.8.0
 ```
 
- __Check__ that pip installed __pao-mqtt greater or equal version 1.2.3__, e.g.
+**Check** that pip installed **pao-mqtt greater or equal version 1.2.3**, e.g.
 
 ```bash
 $ pip3 show paho-mqtt
