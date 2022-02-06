@@ -1,8 +1,8 @@
 # mqtt2sql
 
-This python 3 program creates copies of MQTT broker data into a SQL database (currently supports MySQL5.x/MariaDB 10.x and SQLite 3).
+This [python](#deprecated) program creates copies of MQTT broker/server payloads into a SQL database (currently supports MySQL5.x-8.x/MariaDB 10.x and SQLite 3).
 
-[![master](https://img.shields.io/badge/master-v2.4.42-blue.svg)](https://github.com/curzon01/mqtt2sql/tree/master)
+[![master](https://img.shields.io/badge/master-v2.5.0-blue.svg)](https://github.com/curzon01/mqtt2sql/tree/master)
 [![License](https://img.shields.io/github/license/curzon01/mqtt2sql.svg)](LICENSE)
 
 If you like **mqtt2sql** give it a star or fork it:
@@ -12,27 +12,30 @@ If you like **mqtt2sql** give it a star or fork it:
 
 The MQTT data are provided in the following tables/view:
 
-- Table `mqtt`  
+* Table `mqtt`  
 contains the last MQTT copied payload for the subcribed topic
-- Table `mqtt_history`  
+* Table `mqtt_history`  
 contains the payloads history from `mqtt`. History data can be disabled by topic or in general (see [History control](#history-control)).
-- View `mqtt_history_view`  
+* View `mqtt_history_view`  
 contains data from `mqtt_history` with readable topics and timestamps (see [History view](#history-view))
 
-## Content
+## Contents
 
-- [Installation](#installation)
-- [Usage](#usage)
-- [History data](#history-data)
+* [mqtt2sql](#mqtt2sql)
+  * [Contents](#contents)
+  * [Installation](#installation)
+  * [Usage](#usage)
+  * [History data](#history-data)
+  * [Deprecated](#deprecated)
 
 ## Installation
 
 During the installation we
 
-- create a usable [Python 3.x](https://www.python.org/downloads/) environment
-- create the necessary databases and objects
-- test the program
-- and if desired, create a system daemon
+* create a usable [Python 3.x](https://www.python.org/downloads/) environment
+* create the necessary databases and objects
+* test the program
+* and if desired, create a system daemon
 
 ### Python prerequisites
 
@@ -109,21 +112,19 @@ If you got a help page, you can start try to run it using one of the existing da
 
 #### Run program using MySQL
 
-> Change parameter (e.g. mqtthost, sqlhost) to your needs
+> Change parameter to your needs
 
 ```bash
-./mqtt2sql.py --mqtt-host localhost --mqtt-username mqttuser --mqtt-password 'mqttpasswd' \
---mqtt-topic 'mytopic/#' \
+./mqtt2sql.py --mqtt mqtt://mqttuser:mqttpasswd@localhost/mytopic/# \
 --sql-type mysql --sql-host localhost --sql-username sqluser --sql-password 'sqlpasswd' --sql-db mqtt -v
 ```
 
 #### Run program using SQLite3
 
-> Change parameter (e.g. mqtthost) to your needs
+> Change parameter to your needs
 
 ```bash
-./mqtt2sql.py --mqtt-host localhost --mqtt-username mqttuser --mqtt-password 'mqttpasswd' \
---mqtt-topic 'mytopic/#' \
+./mqtt2sql.py --mqtt mqtt://mqttuser:mqttpasswd@localhost/mytopic/# \
 --sql-type sqlite --sql-db mqtt.db -v
 ```
 
@@ -190,8 +191,8 @@ Database objects created by this scripts enables history data as default.
 
 History data creation depends on two columns in `mqtt` table:
 
-- column `history_enable` actuate whether topic payload is saved in history (1) or not (0).
-- column `history_diffonly` actuate whether topic payload is saved in history if it is different to previously (1) or always (0). Note: this column setting neglected if `history_enable` is 0.
+* column `history_enable` actuate whether topic payload is saved in history (1) or not (0).
+* column `history_diffonly` actuate whether topic payload is saved in history if it is different to previously (1) or always (0). Note: this column setting neglected if `history_enable` is 0.
 
 #### Change history control for exiting records
 
@@ -213,7 +214,25 @@ set the same as above (disable history saving for topic records) for newly creat
 
 The view `mqtt_history_view` can be used to get the history data with human readable topics instead of foreign keys from original table `mqtt_history`. The view has also two timestamp columns:
 
-- `ts` is the timestamp from lastest insert into the `mqtt_history` table
-- `ts_last` is the timestamp from lastest change
+* `ts` is the timestamp from lastest insert into the `mqtt_history` table
+* `ts_last` is the timestamp from lastest change
 
 If `history_diffonly` is enabled (1), `ts` shows the timestamp of the last payload change where the `ts_last` shows the latest recevied timestamp (independent if the last recevied payload has change or not).
+
+## Deprecated
+
+Due to the [Python 2.7 EOL](https://github.com/python/devguide/pull/344) in Jan 2020 Python 2.x is no longer supported.
+
+### Deprecated program arguments
+
+The following program arguments are deprecated but still valid and working for backwards compatibility.
+However, these should no longer be used, as they could be omitted in the future.
+
+#### Deprecated MQTT arguments
+
+These deprecated parameters override MQTT URL components:
+
+`--mqtt-host`, `--mqtthost`  
+`--mqtt-port`, `--mqttport`  
+`--mqtt-username`, `--mqttusername`  
+`--mqtt-password` , `--mqttpassword`  
