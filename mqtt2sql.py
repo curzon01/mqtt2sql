@@ -819,18 +819,7 @@ class Mqtt2Sql:
                     time.sleep(0.1)
                 if EXIT_CODE != ExitCode.OK:
                     sys.exit(EXIT_CODE)
-            if ret not in (
-                    mqtt.MQTT_ERR_AGAIN,
-                    mqtt.MQTT_ERR_PROTOCOL,
-                    mqtt.MQTT_ERR_INVAL,
-                    mqtt.MQTT_ERR_NO_CONN,
-                    mqtt.MQTT_ERR_CONN_REFUSED,
-                    mqtt.MQTT_ERR_NOT_FOUND,
-                    mqtt.MQTT_ERR_TLS,
-                    mqtt.MQTT_ERR_PAYLOAD_SIZE,
-                    mqtt.MQTT_ERR_NOT_SUPPORTED,
-                    mqtt.MQTT_ERR_AUTH,
-                    mqtt.MQTT_ERR_ERRNO):
+            if ret == mqtt.MQTT_ERR_CONN_LOST:
                 # disconnect from server
                 log(0, 'Remote disconnected from MQTT - [{}] {})'.format(ret, mqtt.error_string(ret)))
                 try:
