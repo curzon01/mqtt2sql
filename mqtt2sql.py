@@ -6,7 +6,7 @@ VER = '2.5.0'
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
 
-    Copyright (C) 2020 Norbert Richter <nr@prsolution.eu>
+    Copyright (C) 2022 Norbert Richter <nr@prsolution.eu>
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -23,8 +23,9 @@ VER = '2.5.0'
 
 
 Requirements:
-    Python 3, Paho MQTT, MySQLdb:
-    sudo apt-get install python3 python3-pip python3-mysqldb python3-configargparse python3-paho-mqtt
+    Python, pip and modules:
+    > apt install python3 python3-pip
+    > python -m pip install -r requirements.txt
 
 Usage:
     See README.md for more details how to install and use

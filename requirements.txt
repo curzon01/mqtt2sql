@@ -1,0 +1,3 @@
+configargparse
+mysqlclient
+paho-mqtt
