@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.5.0'
+VER = '2.5.1'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -97,6 +97,7 @@ DEFAULTS = {
 
     'mqtt_url': 'mqtt://localhost/#',
     'mqtt-topic': None,
+    'mqtt-exclude-topic': None,
     'mqtt-cafile': None,
     'mqtt-certfile': None,
     'mqtt-keyfile': None,
@@ -182,6 +183,13 @@ def parseargs():
         default=DEFAULTS['mqtt-topic'],
         help="optional: topic(s) to use (default {}).".format(DEFAULTS['mqtt-topic']))
     mqtt_group.add_argument('--topic', dest='mqtt_topic', nargs='*', help=configargparse.SUPPRESS)
+    mqtt_group.add_argument(
+        '--mqtt-exclude-topic',
+        metavar='<topic>',
+        dest='mqtt_exclude_topic',
+        nargs='*',
+        default=DEFAULTS['mqtt-exclude-topic'],
+        help="optional: topic(s) to exclude (default {}).".format(DEFAULTS['mqtt-exclude-topic']))
     mqtt_group.add_argument(
         '--mqtt-cafile',
         metavar='<cafile>',
@@ -421,6 +429,7 @@ class Mqtt2Sql:
         self.mqtt_keepalive = args.mqtt_keepalive
         self.connect_timeout = args.mqtt_connect_timeout
         self.mqtt_topic = args.mqtt_topic
+        self.mqtt_exclude_topic = args.mqtt_exclude_topic
         self.cafile = args.mqtt_cafile
         self.certfile = args.mqtt_certfile
         self.keyfile = args.mqtt_keyfile
@@ -625,6 +634,7 @@ class Mqtt2Sql:
         log(1, '  MQTT server: {}:{} {}{} keepalive {}'.format(self.mqtt_host, self.mqtt_port, 'SSL' if (self.cafile is not None) else '', ' (suppress TLS verification)' if self.insecure else '', self.mqtt_keepalive))
         log(1, '       user:   {}'.format(self.mqtt_username))
         log(1, '       topics: {}'.format(self.mqtt_topic))
+        log(1, '       exclude: {}'.format(self.mqtt_exclude_topic))
         log(1, '  SQL  type:   {}'.format(SQLTYPES[self.args_.sql_type]))
         if issocket(self.args_.sql_host):
             log(1, '       server: {} [max {} connections]'.format(self.args_.sql_host, self.args_.sql_max_connection))
@@ -674,6 +684,8 @@ class Mqtt2Sql:
                 self.mqtt_port = DEFAULT_PORT_MQTT
         if self.mqtt_topic is None:
             self.mqtt_topic =  DEFAULTS['mqtt-topic']
+        if self.mqtt_exclude_topic is None:
+            self.mqtt_exclude_topic =  DEFAULTS['mqtt-exclude-topic']
         if self.mqtt_username is None:
             self.mqtt_username = DEFAULTS['mqtt-username']
         if self.mqtt_password is None:
@@ -712,13 +724,13 @@ class Mqtt2Sql:
         self.connected = mqtt.MQTT_ERR_SUCCESS == return_code
         self.connect_rc = return_code
         if self.connected:
-            if isinstance(self.mqtt_topic, str):
-                debuglog(1, "subscribe to topic {}".format(self.mqtt_topic))
-                client.subscribe(self.mqtt_topic, 0)
-            else:
+            if isinstance(self.mqtt_topic, (list, tuple)):
                 for topic in self.mqtt_topic:
                     debuglog(1, "subscribe to topic {}".format(topic))
                     client.subscribe(topic, 0)
+            else:
+                debuglog(1, "subscribe to topic {}".format(self.mqtt_topic))
+                client.subscribe(self.mqtt_topic, 0)
 
     def on_message(self, client, userdata, message):
         """
@@ -738,7 +750,8 @@ class Mqtt2Sql:
         log(2, '{} {} [QOS {} Retain {}]'.format(message.topic, message.payload, message.qos, message.retain))
 
         debuglog(2, "on_message({},{},{})".format(client, userdata, message))
-        if self.exit_code == ExitCode.OK:
+
+        if self.exit_code == ExitCode.OK and self.mqtt_exclude_topic is not None and message.topic not in self.mqtt_exclude_topic:
             self.pool_sqlconnections.acquire()
             self.write2sql_thread = Thread(target=self.write2sql, args=(message,))
             self.write2sql_thread.start()
