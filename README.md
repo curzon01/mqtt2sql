@@ -21,12 +21,11 @@ contains data from `mqtt_history` with readable topics and timestamps (see [Hist
 
 ## Contents
 
-* [mqtt2sql](#mqtt2sql)
-  * [Contents](#contents)
-  * [Installation](#installation)
-  * [Usage](#usage)
-  * [History data](#history-data)
-  * [Deprecated](#deprecated)
+* [Contents](#contents)
+* [Installation](#installation)
+* [Usage](#usage)
+* [History data](#history-data)
+* [Deprecated](#deprecated)
 
 ## Installation
 
@@ -46,23 +45,24 @@ If not already done, install a working [Python 3.x](https://www.python.org/downl
 Install Pip, Paho MQTT and MySQLdb lib to your python environment use
 
 ```bash
-sudo apt-get install python3-pip python3-mysqldb python3-configargparse python3-paho-mqtt
+sudo apt install python3 python3-pip
+python -m pip install -r requirements.txt
 ```
 
 **Check** that Python 3.x is installed e.g.
 
 ```bash
-$ python3 --version
-Python 3.8.0
+$ python --version
+Python 3.10.6
 ```
 
 **Check** that pip installed **pao-mqtt greater or equal version 1.2.3**, e.g.
 
 ```bash
-$ pip3 show paho-mqtt
+$ python -m pip show paho-mqtt
 ...
 Name: paho-mqtt
-Version: 1.5.0
+Version: 1.6.1
 ...
 ```
 
@@ -189,10 +189,10 @@ Database objects created by this scripts enables history data as default.
 
 ### History control
 
-History data creation depends on two columns in `mqtt` table:
+History data creation depends on two columns for topics in `mqtt` table:
 
-* column `history_enable` actuate whether topic payload is saved in history (1) or not (0).
-* column `history_diffonly` actuate whether topic payload is saved in history if it is different to previously (1) or always (0). Note: this column setting neglected if `history_enable` is 0.
+* column `history_enable` indicates whether topic payload is saved in `mqtt_history` (1) or not (0).
+* column `history_diffonly` indicates whether topic payload is saved in `mqtt_history` only if payload is different to previously (1) or always (0). Note: this setting is ignored if `history_enable` is 0.
 
 #### Change history control for exiting records
 
