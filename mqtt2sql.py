@@ -751,7 +751,9 @@ class Mqtt2Sql:
 
         debuglog(2, "on_message({},{},{})".format(client, userdata, message))
 
-        if self.exit_code == ExitCode.OK and self.mqtt_exclude_topic is not None and message.topic not in self.mqtt_exclude_topic:
+        if self.exit_code == ExitCode.OK:
+            if self.mqtt_exclude_topic is not None and message.topic in self.mqtt_exclude_topic:
+                return
             self.pool_sqlconnections.acquire()
             self.write2sql_thread = Thread(target=self.write2sql, args=(message,))
             self.write2sql_thread.start()
