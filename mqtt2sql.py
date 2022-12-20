@@ -712,9 +712,13 @@ class Mqtt2Sql:
         self.connected = mqtt.MQTT_ERR_SUCCESS == return_code
         self.connect_rc = return_code
         if self.connected:
-            for topic in self.mqtt_topic:
-                debuglog(1, "subscribe to topic {}".format(topic))
-                client.subscribe(topic, 0)
+            if isinstance(self.mqtt_topic, str):
+                debuglog(1, "subscribe to topic {}".format(self.mqtt_topic))
+                client.subscribe(self.mqtt_topic, 0)
+            else:
+                for topic in self.mqtt_topic:
+                    debuglog(1, "subscribe to topic {}".format(topic))
+                    client.subscribe(topic, 0)
 
     def on_message(self, client, userdata, message):
         """
