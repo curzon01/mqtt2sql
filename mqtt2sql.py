@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.5.2'
+VER = '2.5.3'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -554,25 +554,24 @@ class Mqtt2Sql:
             cursor = db_connection.cursor()
             try:
                 # INSERT/UPDATE record
-                payload = message.payload
-                if not isinstance(payload, str):
-                    payload = str(payload, 'utf-8', errors='ignore')
                 if self.args_.sql_type == 'mysql':
                     sql = "INSERT INTO `{0}` \
-                        SET `ts`='{1}',`topic`='{2}',`value`='{3}',`qos`='{4}',`retain`='{5}' \
-                        ON DUPLICATE KEY UPDATE `ts`='{1}',`value`='{3}',`qos`='{4}',`retain`='{5}'"\
+                        SET `ts`='{1}',`topic`='{2}',`value`=x'{3}',`qos`='{4}',`retain`='{5}' \
+                        ON DUPLICATE KEY UPDATE `ts`='{1}',`value`=x'{3}',`qos`='{4}',`retain`='{5}'"\
                         .format(
                             self.args_.sql_table,
                             timestamp,
                             message.topic,
-                            payload,
+                            message.payload.hex(),
                             message.qos,
                             message.retain
                         )
                     debuglog(4, "SQL exec: '{}'".format(sql))
                     cursor.execute(sql)
                 elif self.args_.sql_type == 'sqlite':
-                    # strtime=str(time.strftime("%Y-%m-%d %H:%M:%S"))
+                    payload = message.payload
+                    if not isinstance(payload, str):
+                        payload = str(payload, 'utf-8', errors='ignore')
                     sql1 = "INSERT OR IGNORE INTO `{0}` \
                             (ts,topic,value,qos,retain) \
                             VALUES('{1}','{2}','{3}','{4}','{5}')"\
@@ -608,7 +607,7 @@ class Mqtt2Sql:
                         sys.exit(self.exit_code)
 
                 db_connection.commit()
-                debuglog(1, "[{}]: SQL success: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(get_ident(), self.args_.sql_table, message.topic, payload, message.qos, message.retain))
+                debuglog(1, "[{}]: SQL success: table='{}', topic='{}', value='{}', qos='{}', retain='{}'".format(get_ident(), self.args_.sql_table, message.topic, message.payload, message.qos, message.retain))
                 transaction_retry = 0
 
             except MySQLdb.Error as err:    # pylint: disable=no-member
