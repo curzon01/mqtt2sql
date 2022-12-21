@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.5.3'
+VER = '2.5.4'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -569,23 +569,20 @@ class Mqtt2Sql:
                     debuglog(4, "SQL exec: '{}'".format(sql))
                     cursor.execute(sql)
                 elif self.args_.sql_type == 'sqlite':
-                    payload = message.payload
-                    if not isinstance(payload, str):
-                        payload = str(payload, 'utf-8', errors='ignore')
                     sql1 = "INSERT OR IGNORE INTO `{0}` \
                             (ts,topic,value,qos,retain) \
-                            VALUES('{1}','{2}','{3}','{4}','{5}')"\
+                            VALUES('{1}','{2}',x'{3}','{4}','{5}')"\
                         .format(
                             self.args_.sql_table,
                             timestamp,
                             message.topic,
-                            payload,
+                            message.payload.hex(),
                             message.qos,
                             message.retain
                         )
                     sql2 = "UPDATE `{0}` \
                             SET ts='{1}', \
-                                value='{3}', \
+                                value=x'{3}', \
                                 qos='{4}', \
                                 retain='{5}' \
                             WHERE topic='{2}'"\
@@ -593,7 +590,7 @@ class Mqtt2Sql:
                             self.args_.sql_table,
                             timestamp,
                             message.topic,
-                            payload,
+                            message.payload.hex(),
                             message.qos,
                             message.retain
                         )
