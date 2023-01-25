@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.5.4'
+VER = '2.5.5'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -95,7 +95,10 @@ DEFAULTS = {
     'debug': None,
     'verbose': None,
 
-    'mqtt_url': 'mqtt://localhost/#',
+    'mqtt-url': 'mqtt://localhost/#',
+    'mqtt-username': None,
+    'mqtt-password': None,
+    'mqtt-host': 'localhost',
     'mqtt-topic': None,
     'mqtt-exclude-topic': None,
     'mqtt-cafile': None,
@@ -162,10 +165,10 @@ def parseargs():
         '--mqtt',
         metavar='<URL>',
         dest='mqtt_url',
-        default=DEFAULTS['mqtt_url'],
+        default=DEFAULTS['mqtt-url'],
         help="R|Specify specify user, password, hostname, port and topic at once as a URL (default '{}').\n"
         "The URL must be in the form:\n"
-        "mqtt(s)://[username[:password]@]host[:port][/topic]".format(DEFAULTS['mqtt_url'])
+        "mqtt(s)://[username[:password]@]host[:port][/topic]".format(DEFAULTS['mqtt-url'])
     )
     mqtt_group.add_argument('--mqtt-host',dest='mqtt_host', help=configargparse.SUPPRESS)
     mqtt_group.add_argument('--mqtthost', '--host', dest='mqtt_host', help=configargparse.SUPPRESS)
