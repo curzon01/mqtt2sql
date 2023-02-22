@@ -45,7 +45,7 @@ If not already done, install a working [Python 3.x](https://www.python.org/downl
 Install Pip, Paho MQTT and MySQLdb lib to your python environment use
 
 ```bash
-sudo apt install python3 python3-pip
+sudo apt install python3 python3-pip libmysqlclient-dev
 python -m pip install -r requirements.txt
 ```
 
