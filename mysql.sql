@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS `mqtt_history` (
 	INDEX `topicid` (`topicid`),
 	INDEX `ts` (`ts`),
 	CONSTRAINT `FK_mqtt_history_mqtt` FOREIGN KEY (`topicid`) REFERENCES `mqtt` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB ROW_FORMAT=COMPRESSED DEFAULT CHARSET=utf8;
 
 DELIMITER //
 CREATE TRIGGER IF NOT EXISTS `mqtt_before_insert` BEFORE INSERT ON `mqtt` FOR EACH ROW BEGIN
