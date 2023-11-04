@@ -504,7 +504,7 @@ class Mqtt2Sql:
         if self.exit_code != ExitCode.OK:
             sys.exit(0)
 
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         connection_retry = self.args_.sql_connection_retry
         connection_delay = self.args_.sql_connection_retry_start_delay
         connection_delay_base = self.args_.sql_connection_retry_start_delay
