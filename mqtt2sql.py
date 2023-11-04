@@ -573,25 +573,23 @@ class Mqtt2Sql:
                     cursor.execute(sql)
                 elif self.args_.sql_type == 'sqlite':
                     sql1 = "INSERT OR IGNORE INTO `{0}` \
-                            (ts,topic,value,qos,retain) \
+                            (topic,value,qos,retain) \
                             VALUES('{1}','{2}',x'{3}','{4}','{5}')"\
                         .format(
                             self.args_.sql_table,
-                            timestamp,
                             message.topic,
                             message.payload.hex(),
                             message.qos,
                             message.retain
                         )
                     sql2 = "UPDATE `{0}` \
-                            SET ts='{1}', \
+                            SET ts=datetime('now'), \
                                 value=x'{3}', \
                                 qos='{4}', \
                                 retain='{5}' \
                             WHERE topic='{2}'"\
                         .format(
                             self.args_.sql_table,
-                            timestamp,
                             message.topic,
                             message.payload.hex(),
                             message.qos,
