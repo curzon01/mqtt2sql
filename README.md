@@ -2,7 +2,7 @@
 
 This [python](#deprecated) program creates copies of MQTT broker/server payloads into a SQL database (currently supports MySQL5.x-8.x/MariaDB 10.x and SQLite 3).
 
-[![master](https://img.shields.io/badge/master-v2.5.5-blue.svg)](https://github.com/curzon01/mqtt2sql/tree/master)
+[![master](https://img.shields.io/badge/master-v3.0.0-blue.svg)](https://github.com/curzon01/mqtt2sql/tree/master)
 [![License](https://img.shields.io/github/license/curzon01/mqtt2sql.svg)](LICENSE)
 
 If you like **mqtt2sql** give it a star or fork it:
@@ -19,13 +19,23 @@ contains the payloads history from `mqtt`. History data can be disabled by topic
 * View `mqtt_history_view`  
 contains data from `mqtt_history` with readable topics and timestamps (see [History view](#history-view))
 
-## Contents
+<details>
+  <summary>Contents</summary>
 
-* [Contents](#contents)
 * [Installation](#installation)
+  * [Python prerequisites](#python-prerequisites)
+  * [Copy the program](#copy-the-program)
+  * [Create database objects](#create-database-objects)
 * [Usage](#usage)
+  * [Start from command line](#start-from-command-line)
+  * [Start as systemd manager daemon](#start-as-systemd-manager-daemon)
 * [History data](#history-data)
+  * [History control](#history-control)
+  * [History view](#history-view)
+  * [Localized timestamps](#localized-timestamps)
 * [Deprecated](#deprecated)
+  * [Deprecated program arguments](#deprecated-program-arguments)
+</details>
 
 ## Installation
 
@@ -218,6 +228,12 @@ The view `mqtt_history_view` can be used to get the history data with human read
 * `ts_last` is the timestamp from lastest change
 
 If `history_diffonly` is enabled (1), `ts` shows the timestamp of the last payload change where the `ts_last` shows the latest recevied timestamp (independent if the last recevied payload has change or not).
+
+### Localized timestamps
+
+Since mqtt2sql v3.0.0 time stamps are saved using UTC by default. This is the best way to avoid time duplicates during the change from e. g. daylight saving time (DST) to standard time. To process timestamps using your local time, convert them when reading the database (e.g. for MySQL `CONVERT_TZ(ts, 'UTC', 'Europe/Amsterdam')`, SQlite `DATETIME(ts, 'localtime'`).
+
+If you want to use local time stamps for any reason, use the optional parameter `--sql-timezone <timezone>` (the possible time zones can be displayed by passing `--sql-timezone <timezone>` help), e. g. `--sql-timezone US/Eastern`.
 
 ## Deprecated
 

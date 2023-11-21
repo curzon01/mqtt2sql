@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '2.5.5'
+VER = '3.0.0'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -59,6 +59,7 @@ try:
     import paho.mqtt.client as mqtt
     import time
     import datetime
+    import zoneinfo
     import signal
     import logging
     import configargparse
@@ -87,7 +88,7 @@ except ImportError:
 
 SCRIPTNAME = os.path.basename(sys.argv[0])
 SCRIPTPID = os.getpid()
-SQLTYPES = {'mysql':'MySQl', 'sqlite':'SQLite'}
+SQLTYPES = {'mysql':'MySQL', 'sqlite':'SQLite'}
 ARGS = {}
 DEFAULTS = {
     'configfile': None,
@@ -118,7 +119,8 @@ DEFAULTS = {
     'sql-max-connection': 50,
     'sql-connection-retry': 10,
     'sql-connection-retry-start-delay': 1,
-    'sql-transaction-retry': 10
+    'sql-transaction-retry': 10,
+    'sql-timezone': 'UTC'
 }
 
 DEFAULT_PORT_MQTT = 1883
@@ -297,6 +299,16 @@ def parseargs():
         default=DEFAULTS['sql-table'],
         help="table to use (default '{}')".format(DEFAULTS['sql-table']))
     sql_group.add_argument('--sqltable', dest='sql_table', help=configargparse.SUPPRESS)
+    tz_choices = list(zoneinfo.available_timezones())
+    sql_group.add_argument(
+        '--sql-timezone',
+        metavar='<timezone>',
+        dest='sql_timezone',
+        choices=tz_choices,
+        default=DEFAULTS['sql-timezone'],
+        help="server timezone (default '{}')".format(DEFAULTS['sql-timezone']))
+    sql_group.add_argument('--sqltimezone', dest='sql_timezone', choices=tz_choices, help=configargparse.SUPPRESS)
+
     sql_group.add_argument(
         '--sql-max-connection',
         metavar='<num>',
@@ -442,6 +454,7 @@ class Mqtt2Sql:
         self.certfile = args.mqtt_certfile
         self.keyfile = args.mqtt_keyfile
         self.insecure = args.mqtt_insecure
+        self.sql_timezone = args.sql_timezone
         self.write2sql_thread = None
         self.pool_sqlconnections = BoundedSemaphore(value=args.sql_max_connection)
         self.userdata = {
@@ -504,7 +517,7 @@ class Mqtt2Sql:
         if self.exit_code != ExitCode.OK:
             sys.exit(0)
 
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.datetime.now(tz=zoneinfo.ZoneInfo(self.args_.sql_timezone)).strftime("%Y-%m-%d %H:%M:%S")
         connection_retry = self.args_.sql_connection_retry
         connection_delay = self.args_.sql_connection_retry_start_delay
         connection_delay_base = self.args_.sql_connection_retry_start_delay
@@ -636,19 +649,20 @@ class Mqtt2Sql:
         Verbose args
         """
         log(LogLevel.INFORMATION, '  MQTT server: {}:{} {}{} keepalive {}'.format(self.mqtt_host, self.mqtt_port, 'SSL' if (self.cafile is not None) else '', ' (suppress TLS verification)' if self.insecure else '', self.mqtt_keepalive))
-        log(LogLevel.INFORMATION, '       user:   {}'.format(self.mqtt_username))
-        log(LogLevel.INFORMATION, '       topics: {}'.format(self.mqtt_topic))
-        log(LogLevel.INFORMATION, '       exclude: {}'.format(self.mqtt_exclude_topic))
-        log(LogLevel.INFORMATION, '  SQL  type:   {}'.format(SQLTYPES[self.args_.sql_type]))
+        log(LogLevel.INFORMATION, '    user:    {}'.format(self.mqtt_username))
+        log(LogLevel.INFORMATION, '    topics:  {}'.format(self.mqtt_topic))
+        log(LogLevel.INFORMATION, '    exclude: {}'.format(self.mqtt_exclude_topic))
+        log(LogLevel.INFORMATION, '  SQL type: {}'.format(SQLTYPES[self.args_.sql_type]))
         if issocket(self.args_.sql_host):
-            log(LogLevel.INFORMATION, '       server: {} [max {} connections]'.format(self.args_.sql_host, self.args_.sql_max_connection))
+            log(LogLevel.INFORMATION, '    server:  {} [max {} connections]'.format(self.args_.sql_host, self.args_.sql_max_connection))
         else:
-            log(LogLevel.INFORMATION, '       server: {}:{} [max {} connections]'.format(self.args_.sql_host, self.args_.sql_port, self.args_.sql_max_connection))
-        log(LogLevel.INFORMATION, '       db:     {}'.format(self.args_.sql_db))
-        log(LogLevel.INFORMATION, '       table:  {}'.format(self.args_.sql_table))
-        log(LogLevel.INFORMATION, '       user:   {}'.format(self.args_.sql_username))
+            log(LogLevel.INFORMATION, '    server:   {}:{} [max {} connections]'.format(self.args_.sql_host, self.args_.sql_port, self.args_.sql_max_connection))
+        log(LogLevel.INFORMATION, '    db:       {}'.format(self.args_.sql_db))
+        log(LogLevel.INFORMATION, '    table:    {}'.format(self.args_.sql_table))
+        log(LogLevel.INFORMATION, '    user:     {}'.format(self.args_.sql_username))
+        log(LogLevel.INFORMATION, '    timezone: {}'.format(self.args_.sql_timezone))
         if self.args_.logfile is not None:
-            log(LogLevel.INFORMATION, '  Log file:    {}'.format(self.args_.logfile))
+            log(LogLevel.INFORMATION, '  Log file: {}'.format(self.args_.logfile))
         if debug_level() > 0:
             log(LogLevel.INFORMATION, '  Debug level: {}'.format(debug_level()))
         log(LogLevel.INFORMATION, '  Verbose level: {}'.format(verbose_level()))
