@@ -231,9 +231,9 @@ If `history_diffonly` is enabled (1), `ts` shows the timestamp of the last paylo
 
 ### Localized timestamps
 
-Since mqtt2sql v3.0.0 time stamps are saved using UTC by default. This is the best way to avoid time duplicates during the change from e. g. daylight saving time (DST) to standard time. To process timestamps using your local time, convert them when reading the database (e.g. for MySQL `CONVERT_TZ(ts, 'UTC', 'Europe/Amsterdam')`, SQlite `DATETIME(ts, 'localtime'`).
+Since mqtt2sql v3.0.0 timestamps are saved using [UTC](https://en.wikipedia.org/wiki/Coordinated_Universal_Time) by default. This is the best way to avoid time duplicates during the change from e. g. daylight saving time (DST) to standard time. To process timestamps using your local time, convert them when reading the database (e.g. for MySQL use `CONVERT_TZ(ts, 'UTC', 'localtime')`, for SQlite use `DATETIME(ts, 'localtime'`).
 
-If you want to use local time stamps for any reason, use the optional parameter `--sql-timezone <timezone>` (the possible time zones can be displayed by passing `--sql-timezone <timezone>` help), e. g. `--sql-timezone US/Eastern`.
+If you want to use local timestamps for any reason, use the optional parameter `--sql-timezone <timezone>`. Possible time zones can be displayed using `--sql-timezone help`.
 
 ## Deprecated
 
