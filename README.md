@@ -2,7 +2,7 @@
 
 This [python](#deprecated) program creates copies of MQTT broker/server payloads into a SQL database (currently supports MySQL5.x-8.x/MariaDB 10.x and SQLite 3).
 
-[![master](https://img.shields.io/badge/master-v3.0.0-blue.svg)](https://github.com/curzon01/mqtt2sql/tree/master)
+[![master](https://img.shields.io/badge/master-v3.0.2-blue.svg)](https://github.com/curzon01/mqtt2sql/tree/master)
 [![License](https://img.shields.io/github/license/curzon01/mqtt2sql.svg)](LICENSE)
 
 If you like **mqtt2sql** give it a star or fork it:
