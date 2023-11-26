@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '3.0.1'
+VER = '3.0.2'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -571,6 +571,9 @@ class Mqtt2Sql:
             try:
                 # INSERT/UPDATE record
                 if self.args_.sql_type == 'mysql':
+                    sql = "SET SESSION time_zone = '" + self.args_.sql_timezone + "'"
+                    debuglog(4, "SQL exec: '{}'".format(sql))
+                    cursor.execute(sql)
                     sql = "INSERT INTO `{0}` \
                         SET `ts`='{1}',`topic`='{2}',`value`=x'{3}',`qos`='{4}',`retain`='{5}' \
                         ON DUPLICATE KEY UPDATE `ts`='{1}',`value`=x'{3}',`qos`='{4}',`retain`='{5}'"\

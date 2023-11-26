@@ -24,6 +24,7 @@ contains data from `mqtt_history` with readable topics and timestamps (see [Hist
 
 * [Installation](#installation)
   * [Python prerequisites](#python-prerequisites)
+  * [MySQL prerequisites](#mysql-prerequisites)
   * [Copy the program](#copy-the-program)
   * [Create database objects](#create-database-objects)
 * [Usage](#usage)
@@ -75,6 +76,10 @@ Name: paho-mqtt
 Version: 1.6.1
 ...
 ```
+
+### MySQL prerequisites
+
+In order for MySQL to handle time zones correctly, make sure that the [MySQL Server Time Zone Support](https://dev.mysql.com/doc/refman/8.0/en/time-zone-support.html) is set up correctly (see also [Populating the Time Zone Tables](https://dev.mysql.com/doc/refman/8.0/en/time-zone-support.html#time-zone-installation)).
 
 ### Copy the program
 
@@ -231,9 +236,15 @@ If `history_diffonly` is enabled (1), `ts` shows the timestamp of the last paylo
 
 ### Localized timestamps
 
-Since mqtt2sql v3.0.0 timestamps are saved using [UTC](https://en.wikipedia.org/wiki/Coordinated_Universal_Time) by default. This is the best way to avoid time duplicates during the change from e. g. daylight saving time (DST) to standard time. To process timestamps using your local time, convert them when reading the database (e.g. for MySQL use `CONVERT_TZ(ts, 'UTC', 'localtime')`, for SQlite use `DATETIME(ts, 'localtime'`).
+Since mqtt2sql v3.0.0, timestamps are saved using [UTC](https://en.wikipedia.org/wiki/Coordinated_Universal_Time) by default. This is the best way to avoid time duplicates during the change from e. g. daylight saving time (DST) to standard time.
 
-If you want to use local timestamps for any reason, use the optional parameter `--sql-timezone <timezone>`. Possible time zones can be displayed using `--sql-timezone help`.
+To process timestamps under `SQLite` using your local time, convert them when reading the database (e.g. `SELECT DATETIME(ts, 'localtime'`).
+
+When using `MySQL`, you do not need to perform an explicit conversion when reading out the data. `MySQL` continues to use the `TIMESTAMP` data type for timestamps, which always stores timestamps in UTC and automatically converts them to the local time zone of the client connection when they are returned. For this purpose, mqtt2sql uses the same time zone setting for the connection to the MySQL server as the value that is saved when insert the data.
+
+When using `MySQL` as a database, leave the setting for `--sql-timezone` at the default value `UTC`, because Python handles the time conversion from local time to UTC without errors, while MySQL works incorrectly.
+
+If you want to use local timestamps for any reason, use the optional parameter `--sql-timezone <timezone>` (possible time zones can be displayed using `--sql-timezone help`). But be aware that this will result in ambiguous records during the changeover from summer to standard time.
 
 ## Deprecated
 
