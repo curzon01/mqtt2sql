@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '3.0.0'
+VER = '3.0.1'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -585,7 +585,7 @@ class Mqtt2Sql:
                     debuglog(4, "SQL exec: '{}'".format(sql))
                     cursor.execute(sql)
                 elif self.args_.sql_type == 'sqlite':
-                    sql1 = "INSERT OR IGNORE INTO `{0}` \
+                    sql = "INSERT OR IGNORE INTO `{0}` \
                             (ts,topic,value,qos,retain) \
                             VALUES('{1}','{2}',x'{3}','{4}','{5}')"\
                         .format(
@@ -596,7 +596,13 @@ class Mqtt2Sql:
                             message.qos,
                             message.retain
                         )
-                    sql2 = "UPDATE `{0}` \
+                    debuglog(4, "SQL exec: '{}'".format(sql))
+                    try:
+                        cursor.execute(sql)
+                    except sqlite3.OperationalError as err:
+                        self.exit_code = ExitCode.SQL_CONNECTION_ERROR
+                        sys.exit(self.exit_code)
+                    sql = "UPDATE `{0}` \
                             SET ts='{1}', \
                                 value=x'{3}', \
                                 qos='{4}', \
@@ -610,11 +616,9 @@ class Mqtt2Sql:
                             message.qos,
                             message.retain
                         )
-                    sql = sql1 + '\n' + sql2
                     debuglog(4, "SQL exec: '{}'".format(sql))
                     try:
-                        cursor.execute(sql1)
-                        cursor.execute(sql2)
+                        cursor.execute(sql)
                     except sqlite3.OperationalError as err:
                         self.exit_code = ExitCode.SQL_CONNECTION_ERROR
                         sys.exit(self.exit_code)
