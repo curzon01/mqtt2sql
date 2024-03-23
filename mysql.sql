@@ -91,7 +91,7 @@ END//
 DELIMITER ;
 
 
-CREATE VIEW IF NOT EXISTS `mqtt_history_view` AS
+CREATE OR REPLACE VIEW IF NOT EXISTS `mqtt_history_view` AS
 SELECT
     h.id,
     h.ts AS 'ts',
