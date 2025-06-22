@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '3.0.2'
+VER = '3.0.3'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -781,6 +781,7 @@ class Mqtt2Sql:
                 return
             self.pool_sqlconnections.acquire()
             self.write2sql_thread = Thread(target=self.write2sql, args=(message,))
+            self.write2sql_thread.daemon = True
             self.write2sql_thread.start()
 
     def on_publish(self, client, userdata, mid):
