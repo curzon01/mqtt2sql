@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '3.0.3'
+VER = '3.0.4'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -56,6 +56,8 @@ def module_import_error(module):
 import os
 import sys
 try:
+    import warnings
+    import paho.mqtt
     import paho.mqtt.client as mqtt
     import time
     import datetime
@@ -846,7 +848,12 @@ class Mqtt2Sql:
             mqttc:  MQTT client handle (or None on error)
             ret:    Error code
         """
-        mqttc = mqtt.Client('{}-{:d}'.format(SCRIPTNAME, os.getpid()), clean_session=True, userdata=self.userdata, protocol=mqtt.MQTTv31)
+        if paho.mqtt.__version__[0] > '1':
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore",category=DeprecationWarning)
+                mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id='{}-{:d}'.format(SCRIPTNAME, os.getpid()), clean_session=True, userdata=self.userdata, protocol=mqtt.MQTTv31)
+        else:
+            mqttc = mqtt.Client(client_id='{}-{:d}'.format(SCRIPTNAME, os.getpid()), clean_session=True, userdata=self.userdata, protocol=mqtt.MQTTv31)
         if debug_level() > 0:
             if debug_level() <= 2:
                 logging.basicConfig(level=logging.WARNING)
