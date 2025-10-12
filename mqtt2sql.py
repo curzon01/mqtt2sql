@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # pylint: disable=line-too-long
-VER = '3.0.4'
+VER = '3.0.5'
 
 """
     mqtt2mysql.py - Copy MQTT topic payloads to MySQL/SQLite database
@@ -585,7 +585,7 @@ class Mqtt2Sql:
                             message.topic,
                             message.payload.hex(),
                             message.qos,
-                            message.retain
+                            int(message.retain)
                         )
                     debuglog(4, "SQL exec: '{}'".format(sql))
                     cursor.execute(sql)
@@ -599,7 +599,7 @@ class Mqtt2Sql:
                             message.topic,
                             message.payload.hex(),
                             message.qos,
-                            message.retain
+                            int(message.retain)
                         )
                     debuglog(4, "SQL exec: '{}'".format(sql))
                     try:
@@ -619,7 +619,7 @@ class Mqtt2Sql:
                             message.topic,
                             message.payload.hex(),
                             message.qos,
-                            message.retain
+                            int(message.retain)
                         )
                     debuglog(4, "SQL exec: '{}'".format(sql))
                     try:
